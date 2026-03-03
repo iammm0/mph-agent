@@ -5,8 +5,6 @@ import shutil
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-import jpype
-
 from agent.utils.config import get_settings, get_project_root
 from agent.utils.java_runtime import ensure_bundled_java
 from agent.utils.logger import get_logger
@@ -16,6 +14,17 @@ if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+
+
+def _jpype():
+    """延迟导入 jpype，便于 bridge 在未安装 jpype1 时也能启动；缺包时在首次使用 COMSOL 时报错。"""
+    try:
+        import jpype
+        return jpype
+    except ModuleNotFoundError as e:
+        raise RuntimeError(
+            "未找到 jpype 模块，COMSOL 功能需要安装 jpype1。请在项目根目录执行: uv sync 或 pip install jpype1"
+        ) from e
 
 
 def _resolve_comsol_native_path(settings) -> Optional[str]:
@@ -129,6 +138,7 @@ class COMSOLRunner:
                 os.environ["PATH"] = prepend
 
         try:
+            jpype = _jpype()
             jvm_path = comsol_jvm if comsol_jvm else jpype.getDefaultJVMPath()
             jpype.startJVM(jvm_path, *jvm_args)
             # 使用 JClass 加载，避免 "No module named 'com'"（com 为 Java 包，非 Python 模块）
@@ -136,11 +146,14 @@ class COMSOLRunner:
             ModelUtil.initStandalone(False)
             logger.info("JVM 启动成功，COMSOL API 已加载")
             cls._jvm_started = True
+        except RuntimeError:
+            raise
         except Exception as e:
             logger.error(f"加载 COMSOL API 失败: {e}")
             raise RuntimeError(f"无法加载 COMSOL API: {e}") from e
 
     def create_model(self, model_name: str):
+        jpype = _jpype()
         ModelUtil = jpype.JClass("com.comsol.model.util.ModelUtil")
         logger.info(f"创建模型: {model_name}")
         return ModelUtil.create(model_name)
@@ -323,6 +336,6 @@ class COMSOLRunner:
     @classmethod
     def shutdown_jvm(cls):
         if cls._jvm_started:
-            jpype.shutdownJVM()
+            _jpype().shutdownJVM()
             cls._jvm_started = False
             logger.info("JVM 已关闭")

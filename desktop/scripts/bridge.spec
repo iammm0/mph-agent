@@ -33,6 +33,7 @@ a = Analysis(
         "openai",
         "requests",
         "jpype",
+        "_jpype",
         "loguru",
         "questionary",
     ],

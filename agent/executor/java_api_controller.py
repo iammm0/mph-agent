@@ -2,7 +2,6 @@
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 import base64
-import jpype
 import shutil
 import tempfile
 
@@ -15,6 +14,17 @@ from schemas.study import StudyPlan
 from schemas.material import MaterialPlan
 
 logger = get_logger(__name__)
+
+
+def _jpype():
+    """延迟导入 jpype；缺包时在首次使用 COMSOL 时报错。"""
+    try:
+        import jpype
+        return jpype
+    except ModuleNotFoundError as e:
+        raise RuntimeError(
+            "未找到 jpype 模块，COMSOL 功能需要安装 jpype1。请在项目根目录执行: uv sync 或 pip install jpype1"
+        ) from e
 
 PHYSICS_TYPE_TO_COMSOL_TAG = {
     "heat": "HeatTransfer",
@@ -96,6 +106,7 @@ class JavaAPIController:
 
     def _load_model(self, model_path: str):
         COMSOLRunner._ensure_jvm_started()
+        jpype = _jpype()
         # 使用 JClass 加载，避免 "No module named 'com'"（com 为 Java 包，非 Python 模块）
         ModelUtil = jpype.JClass("com.comsol.model.util.ModelUtil")
         path = Path(model_path)
