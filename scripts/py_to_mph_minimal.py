@@ -5,7 +5,7 @@
 依赖：.env 中已配置 COMSOL_JAR_PATH（及可选 JAVA_HOME、COMSOL_NATIVE_PATH）。
 运行：在项目根目录执行
   uv run python scripts/py_to_mph_minimal.py
-输出：在 comsol-agent 根目录下的 models/ 中生成 minimal_model.mph。
+输出：在 mph-agent 根目录下的 models/ 中生成 minimal_model.mph。
 """
 import os
 from pathlib import Path

@@ -94,7 +94,7 @@ def test_schema():
 
 
 if __name__ == "__main__":
-    print("COMSOL Agent 开发测试")
+    print("mph-agent 开发测试")
     print("=" * 60)
     
     success = True

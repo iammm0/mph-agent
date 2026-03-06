@@ -21,9 +21,9 @@ def _launch_desktop(root: Path) -> None:
 
     # 优先查找打包后的可执行文件
     if sys.platform == "win32":
-        bundled = desktop_dir / "src-tauri" / "target" / "release" / "comsol-agent-desktop.exe"
+        bundled = desktop_dir / "src-tauri" / "target" / "release" / "mph-agent-desktop.exe"
     else:
-        bundled = desktop_dir / "src-tauri" / "target" / "release" / "comsol-agent-desktop"
+        bundled = desktop_dir / "src-tauri" / "target" / "release" / "mph-agent-desktop"
 
     if bundled.exists():
         try:
@@ -91,7 +91,7 @@ def main() -> None:
 
     if not args or (len(args) == 1 and args[0] in ("--help", "-h", "--interactive", "-i")):
         if args and args[0] in ("--help", "-h"):
-            print("Usage: comsol-agent  或  comsol-agent tui-bridge")
+            print("Usage: mph-agent  或  mph-agent tui-bridge")
             print("  无参数启动桌面应用；tui-bridge 供内部调用，勿直接使用。")
         _launch_desktop(root)
         return
@@ -111,7 +111,7 @@ def main() -> None:
         bridge_main()
         return
 
-    print("Usage: comsol-agent  或  comsol-agent tui-bridge", file=sys.stderr)
+    print("Usage: mph-agent  或  mph-agent tui-bridge", file=sys.stderr)
     print("  无参数启动桌面应用；run/plan/exec 等请在桌面应用内使用。", file=sys.stderr)
     sys.exit(1)
 

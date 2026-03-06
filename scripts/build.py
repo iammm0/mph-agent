@@ -135,10 +135,10 @@ def run_with_timeout(
 def build():
     """构建分发包"""
     if console:
-        console.print(Panel.fit("[bold cyan]构建 COMSOL Agent 分发包[/bold cyan]", border_style="cyan"))
+        console.print(Panel.fit("[bold cyan]构建 mph-agent 分发包[/bold cyan]", border_style="cyan"))
     else:
         print("=" * 60)
-        print("构建 COMSOL Agent 分发包")
+        print("构建 mph-agent 分发包")
         print("=" * 60)
     
     # 清理旧的构建文件
@@ -284,7 +284,7 @@ def build():
     if console:
         console.print(Panel.fit("[bold green]构建完成！[/bold green]", border_style="green"))
         console.print("\n[bold]安装方式:[/bold]")
-        console.print("  [cyan]pip install dist/agent-for-comsol-multiphysics-*.whl[/cyan]")
+        console.print("  [cyan]pip install dist/mph_agent-*.whl[/cyan]")
         console.print("\n或安装到开发模式:")
         console.print("  [cyan]pip install -e .[/cyan]")
     else:
@@ -292,7 +292,7 @@ def build():
         print("构建完成！")
         print("=" * 60)
         print("\n安装方式:")
-        print("  pip install dist/agent-for-comsol-multiphysics-*.whl")
+        print("  pip install dist/mph_agent-*.whl")
         print("\n或安装到开发模式:")
         print("  pip install -e .")
     

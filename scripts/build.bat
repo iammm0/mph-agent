@@ -8,7 +8,7 @@ REM 超时时间（秒）
 set BUILD_TIMEOUT=300
 
 echo ============================================================
-echo 构建 COMSOL Agent 分发包
+echo 构建 mph-agent 分发包
 echo ============================================================
 
 REM 清理旧的构建文件
@@ -139,7 +139,7 @@ echo 构建完成！
 echo ============================================================
 echo.
 echo 安装方式:
-echo   pip install dist\agent-for-comsol-multiphysics-*.whl
+echo   pip install dist\mph_agent-*.whl
 echo.
 echo 或安装到开发模式:
 echo   pip install -e .

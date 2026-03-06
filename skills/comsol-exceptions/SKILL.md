@@ -58,8 +58,9 @@ triggers:
 5. **update_material_properties(model_path, name, properties, property_group)** — 更新现有材料属性（不重新创建）  
 6. **remove_all_materials(model_path)** — 批量删除所有材料节点  
 7. **list_model_tree(model_path)** — 获取模型树（材料/物理场/研究/网格/几何 tags）  
-8. **list_physics_tags / remove_physics / has_physics** — 物理场节点的查询/删除/存在检查  
-9. **list_geometry_tags** — 几何节点名称列表  
-10. **add_materials 内智能创建** — 若名称已存在则自动使用未占用名称（如 mat1→mat2），避免“已存在具有给定名称的对象”报错  
+8. **list_physics_tags / remove_physics / has_physics / rename_physics** — 物理场节点的查询/删除/存在检查/重命名  
+9. **list_study_names / remove_study / rename_study / clear_study** — 研究节点的查询/删除/重命名/清空  
+10. **generate_unique_physics_name(model_path, base)** / **generate_unique_study_name(model_path, base)** — 自动生成唯一节点名称  
+11. **add_materials / add_physics / configure_study 内智能创建** — 若名称已存在则自动使用未占用名称（mat1→mat2、ht0→ht1、std1→std2），避免“已存在具有给定名称的对象”报错  
 
 以上知识在错误反馈（observation.message / feedback）中出现对应关键词时注入，供 LLM 在 _rollback_and_inject 与 _llm_refine_plan 时采纳。
