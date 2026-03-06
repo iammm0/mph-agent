@@ -1,7 +1,7 @@
 {
-  "productName": "COMSOL Agent",
+  "productName": "Multiphysics Modeling Agent",
   "version": "0.1.0",
-  "identifier": "com.sensorai.comsol-agent",
+  "identifier": "com.sensorai.mph-agent",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
     "security": { "csp": null },
     "windows": [
       {
-        "title": "COMSOL Agent",
+        "title": "Multiphysics Modeling Agent",
         "width": 1200,
         "height": 800,
         "resizable": true,
@@ -25,6 +25,6 @@
     "active": true,
     "targets": ["nsis", "msi"],
     "icon": ["icons/icon.ico"],
-    "resources": ["resources/runtime/java"],"externalBin":["binaries/comsol-agent-bridge"]
+    "resources": ["resources/runtime/java"],"externalBin":["binaries/mph-agent-bridge"]
   }
 }

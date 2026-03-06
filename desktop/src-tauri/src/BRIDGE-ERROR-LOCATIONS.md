@@ -19,7 +19,7 @@ if bytes == 0 {
 
 **含义**: `bridge_send_stream` 从子进程 stdout 读一行时得到 **0 字节（EOF）**，说明子进程已退出且未再写数据。
 
-**加固后行为**: 返回错误后会自动尝试 `init_bridge` 重启子进程并写回 state；若重启成功，下一次请求可继续使用。错误文案会引导用户设置 `COMSOL_AGENT_BRIDGE_DEBUG=1` 并查看 `%TEMP%\comsol-agent-bridge-debug.log`。
+**加固后行为**: 返回错误后会自动尝试 `init_bridge` 重启子进程并写回 state；若重启成功，下一次请求可继续使用。错误文案会引导用户设置 `MPH_AGENT_BRIDGE_DEBUG=1` 并查看 `%TEMP%\mph-agent-bridge-debug.log`。
 
 ---
 
@@ -161,7 +161,7 @@ pub async fn bridge_abort(state: tauri::State<'_, BridgeState>) -> Result<(), St
    看启动时是否有 `Warning: Failed to initialize Python bridge`（`lib.rs` 43 行）；若有，重点查 `init_bridge`（2.1）和 `find_project_root` / `find_bundled_bridge_exe`。
 
 2. **复现「Bridge process closed unexpectedly」**  
-   确认是调用 `bridge_send_stream`（run）时出现，则问题在 1.1：子进程在 Rust 读到最终一行之前就退出了。可配合 Python 端 `COMSOL_AGENT_BRIDGE_DEBUG=1` 与 `%TEMP%\comsol-agent-bridge-debug.log` 看子进程是否写出了最终 JSON、是否异常退出。
+   确认是调用 `bridge_send_stream`（run）时出现，则问题在 1.1：子进程在 Rust 读到最终一行之前就退出了。可配合 Python 端 `MPH_AGENT_BRIDGE_DEBUG=1` 与 `%TEMP%\mph-agent-bridge-debug.log` 看子进程是否写出了最终 JSON、是否异常退出。
 
 3. **对比环境**  
    对比 Tauri 启动子进程时的 `current_dir`、环境变量（如 `HTTP_PROXY`）、以及是否使用打包 exe vs 开发用 `python cli.py tui-bridge`，与「单独管道测试能正常返回」的环境是否一致。

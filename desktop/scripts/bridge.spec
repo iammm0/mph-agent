@@ -1,4 +1,4 @@
-# PyInstaller spec for comsol-agent-bridge (desktop 安装包内嵌的 Python 后端)
+# PyInstaller spec for mph-agent-bridge (desktop 安装包内嵌的 Python 后端)
 # 在项目根目录执行: pyinstaller desktop/scripts/bridge.spec
 
 import sys
@@ -55,7 +55,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="comsol-agent-bridge",
+    name="mph-agent-bridge",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

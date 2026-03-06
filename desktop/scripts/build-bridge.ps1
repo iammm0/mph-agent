@@ -11,20 +11,32 @@ $BinariesDir = Join-Path $DesktopRoot "src-tauri\binaries"
 # 目标三元组（与 Rust 一致，Tauri externalBin 要求）
 $TargetTriple = (rustc --print host-tuple 2>$null)
 if (-not $TargetTriple) { $TargetTriple = "x86_64-pc-windows-msvc" }
-$BridgeName = "comsol-agent-bridge-$TargetTriple.exe"
+$BridgeName = "mph-agent-bridge-$TargetTriple.exe"
 
-$DistExe = Join-Path $ProjectRoot "dist\comsol-agent-bridge.exe"
+$DistExe = Join-Path $ProjectRoot "dist\mph-agent-bridge.exe"
 $DestExe = Join-Path $BinariesDir $BridgeName
 
 Write-Host "Building Python bridge with PyInstaller..."
 Push-Location $ProjectRoot
 try {
-    $py = Get-Command python -ErrorAction SilentlyContinue
-    if (-not $py) { $py = Get-Command py -ErrorAction SilentlyContinue }
-    if (-not $py) { throw "python or py not found" }
-    $pyExe = $py.Source
-    cmd /c "`"$pyExe`" -m pip install pyinstaller --quiet"
-    cmd /c "`"$pyExe`" -m PyInstaller desktop/scripts/bridge.spec --noconfirm"
+    # Prefer uv run so project deps (jpype1, questionary, etc.) are used
+    $useUv = $false
+    if (Get-Command uv -ErrorAction SilentlyContinue) {
+        uv run python -c "import sys; sys.exit(0)" 2>$null
+        if ($LASTEXITCODE -eq 0) { $useUv = $true }
+    }
+    if ($useUv) {
+        Write-Host "Using project env (uv run)..."
+        uv pip install pyinstaller --quiet 2>$null
+        uv run python -m PyInstaller desktop/scripts/bridge.spec --noconfirm
+    } else {
+        $py = Get-Command python -ErrorAction SilentlyContinue
+        if (-not $py) { $py = Get-Command py -ErrorAction SilentlyContinue }
+        if (-not $py) { throw "python or py not found (install uv for project deps: https://docs.astral.sh/uv/)" }
+        $pyExe = $py.Source
+        & $pyExe -m pip install pyinstaller --quiet
+        & $pyExe -m PyInstaller desktop/scripts/bridge.spec --noconfirm
+    }
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller exited with code $LASTEXITCODE" }
     if (-not (Test-Path $DistExe)) {
         throw "PyInstaller did not produce: $DistExe"

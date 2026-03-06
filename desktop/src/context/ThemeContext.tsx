@@ -7,7 +7,8 @@ import {
   type ReactNode,
 } from "react";
 
-const STORAGE_KEY = "comsol-agent-theme";
+const STORAGE_KEY = "mph-agent-theme";
+const LEGACY_STORAGE_KEY = "comsol-agent-theme";
 
 export type ThemeMode = "light" | "dark" | "system";
 
@@ -45,7 +46,14 @@ const defaultState: ThemeState = {
 
 function loadTheme(): ThemeState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    let raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw && LEGACY_STORAGE_KEY) {
+      raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (raw) {
+        localStorage.setItem(STORAGE_KEY, raw);
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
+      }
+    }
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<ThemeState>;
       const mode = parsed.themeMode;

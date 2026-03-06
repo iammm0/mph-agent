@@ -8,7 +8,7 @@ export function Footer() {
 
   return (
     <div className="footer">
-      <span>COMSOL Agent</span>
+      <span>Multiphysics Modeling Agent</span>
       <div className="footer-right">
         <span className="footer-mode">
           <span className="dot">●</span> {modeLabel}

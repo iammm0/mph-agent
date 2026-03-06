@@ -1,5 +1,5 @@
 [package]
-name = "comsol-agent-desktop"
+name = "mph-agent-desktop"
 version = "0.1.0"
 edition = "2021"
 

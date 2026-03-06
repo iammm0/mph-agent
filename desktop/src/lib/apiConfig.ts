@@ -1,4 +1,5 @@
-const STORAGE_KEY = "comsol-agent-api-config";
+const STORAGE_KEY = "mph-agent-api-config";
+const LEGACY_STORAGE_KEY = "comsol-agent-api-config";
 
 export type LLMBackendId = "deepseek" | "kimi" | "ollama" | "openai-compatible";
 
@@ -35,7 +36,14 @@ const defaultConfig: ApiConfig = {
 
 export function loadApiConfig(): ApiConfig {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    let raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw && LEGACY_STORAGE_KEY) {
+      raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (raw) {
+        localStorage.setItem(STORAGE_KEY, raw);
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
+      }
+    }
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<ApiConfig>;
       return { ...defaultConfig, ...parsed };

@@ -20,7 +20,7 @@ export function TitleBar() {
     <div className="titlebar">
       <div className="titlebar-left" data-tauri-drag-region>
         <span className="titlebar-icon" aria-hidden>◇</span>
-        <span className="titlebar-title">COMSOL Agent</span>
+        <span className="titlebar-title">Multiphysics Modeling Agent</span>
       </div>
       <div className="titlebar-right">
         <button

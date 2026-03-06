@@ -75,7 +75,7 @@ export default function App() {
         <div className="bridge-error-banner" role="alert">
           Bridge 未就绪：{bridgeStatus.error}
           <span className="bridge-error-hint">
-            请从项目根目录启动应用，或设置 COMSOL_AGENT_BRIDGE_DEBUG=1 后查看 %TEMP%\comsol-agent-bridge-debug.log
+            请从项目根目录启动应用，或设置 MPH_AGENT_BRIDGE_DEBUG=1 后查看 %TEMP%\mph-agent-bridge-debug.log
           </span>
         </div>
       )}

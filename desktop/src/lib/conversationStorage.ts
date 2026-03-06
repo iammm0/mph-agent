@@ -1,9 +1,9 @@
 import type { Conversation } from "./types";
 import type { ChatMessage } from "./types";
 
-const CONVERSATIONS_KEY = "comsol-agent-conversations";
-const MESSAGES_KEY = "comsol-agent-messages";
-const CURRENT_ID_KEY = "comsol-agent-current-conversation-id";
+const CONVERSATIONS_KEY = "mph-agent-conversations";
+const MESSAGES_KEY = "mph-agent-messages";
+const CURRENT_ID_KEY = "mph-agent-current-conversation-id";
 
 export function loadConversations(): Conversation[] {
   try {

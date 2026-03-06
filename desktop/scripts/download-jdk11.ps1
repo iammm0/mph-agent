@@ -8,7 +8,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DesktopRoot = Split-Path -Parent $ScriptDir
 $TargetDir = Join-Path $DesktopRoot "src-tauri\resources\runtime\java"
 $TempZip = [System.IO.Path]::GetTempFileName() + ".zip"
-$TempExtract = Join-Path $env:TEMP "comsol-agent-jdk11-extract"
+$TempExtract = Join-Path $env:TEMP "mph-agent-jdk11-extract"
 
 if (Test-Path (Join-Path $TargetDir "bin\java.exe")) {
     Write-Host "JDK 11 already present at $TargetDir, skip download."
@@ -18,7 +18,7 @@ if (Test-Path (Join-Path $TargetDir "bin\java.exe")) {
 Write-Host "Downloading JDK 11 from Adoptium..."
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri $AdoptiumUrl -OutFile $TempZip -UseBasicParsing -UserAgent "comsol-agent"
+    Invoke-WebRequest -Uri $AdoptiumUrl -OutFile $TempZip -UseBasicParsing -UserAgent "mph-agent"
 } catch {
     Write-Error "Download failed: $_"
     exit 1

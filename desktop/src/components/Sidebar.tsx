@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAppState } from "../context/AppStateContext";
 import { ConfirmDialog } from "./dialogs/ConfirmDialog";
 
-const SIDEBAR_COLLAPSED_KEY = "comsol-agent-sidebar-collapsed";
+const SIDEBAR_COLLAPSED_KEY = "mph-agent-sidebar-collapsed";
 
 function formatTime(ts: number): string {
   const d = new Date(ts);

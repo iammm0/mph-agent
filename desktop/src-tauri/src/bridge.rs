@@ -62,11 +62,11 @@ fn find_bundled_bridge_exe() -> Option<PathBuf> {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
         #[cfg(target_os = "windows")]
-        if name_str.starts_with("comsol-agent-bridge") && name_str.ends_with(".exe") {
+        if name_str.starts_with("mph-agent-bridge") && name_str.ends_with(".exe") {
             return Some(entry.path());
         }
         #[cfg(not(target_os = "windows"))]
-        if name_str.starts_with("comsol-agent-bridge") {
+        if name_str.starts_with("mph-agent-bridge") {
             return Some(entry.path());
         }
     }
@@ -271,7 +271,7 @@ async fn spawn_bridge_child(bundled_java_home: &Option<PathBuf>) -> Result<Child
 
         if let Some(ref jh) = bundled_java_home {
             builder.env("JAVA_HOME", jh);
-            builder.env("COMSOL_AGENT_USE_BUNDLED_JAVA", "1");
+            builder.env("MPH_AGENT_USE_BUNDLED_JAVA", "1");
         }
 
         #[cfg(target_os = "windows")]
@@ -304,7 +304,7 @@ async fn spawn_bridge_child(bundled_java_home: &Option<PathBuf>) -> Result<Child
         }
         if let Some(ref jh) = bundled_java_home {
             builder.env("JAVA_HOME", jh);
-            builder.env("COMSOL_AGENT_USE_BUNDLED_JAVA", "1");
+            builder.env("MPH_AGENT_USE_BUNDLED_JAVA", "1");
         }
         #[cfg(target_os = "windows")]
         {
