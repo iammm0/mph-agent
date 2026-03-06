@@ -106,7 +106,7 @@ jobs:
         with:
           projectPath: desktop
           tagName: ${{ steps.version.outputs.release_tag }}
-          releaseName: COMSOL Agent Desktop v${{ steps.version.outputs.version }}
+          releaseName: Multiphysics Modeling Agent Desktop v${{ steps.version.outputs.version }}
           releaseBody: 'See the assets below to download and install.'
           releaseDraft: true
           prerelease: false

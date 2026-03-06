@@ -114,7 +114,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: COMSOL Agent Desktop v${{ steps.version.outputs.version }}
+          name: Multiphysics Modeling Agent Desktop v${{ steps.version.outputs.version }}
           body: |
             Windows 安装包（含内嵌 Java 11）。请下载 exe 或 msi 安装后使用。
             See the assets below to download and install.
