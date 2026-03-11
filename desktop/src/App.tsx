@@ -12,6 +12,8 @@ import { ExecDialog } from "./components/dialogs/ExecDialog";
 import { OutputDialog } from "./components/dialogs/OutputDialog";
 import { SettingsDialog } from "./components/dialogs/SettingsDialog";
 import { ComsolOpsDialog } from "./components/dialogs/ComsolOpsDialog";
+import { ApiBrowserDialog } from "./components/dialogs/ApiBrowserDialog";
+import { PlanQuestionsDialog } from "./components/dialogs/PlanQuestionsDialog";
 
 interface BridgeInitStatus {
   ready: boolean;
@@ -63,6 +65,10 @@ export default function App() {
         return <ComsolOpsDialog onClose={closeDialog} />;
       case "settings":
         return <SettingsDialog onClose={closeDialog} />;
+      case "api":
+        return <ApiBrowserDialog onClose={closeDialog} />;
+      case "planQuestions":
+        return <PlanQuestionsDialog onClose={closeDialog} />;
       default:
         return null;
     }
