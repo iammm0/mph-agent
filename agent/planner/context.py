@@ -5,9 +5,11 @@ Planner 层 A2A 共享上下文与串行计划数据结构。
 每个 Agent 执行前后可读写共享上下文，以便在遇到 error/exception 时，
 其余 Agent 能获知已完成的修改与错误信息，便于重试或适配。
 """
-from typing import Optional, List, Any, Literal
+from typing import Optional, List, Any, Literal, Dict
 from pydantic import BaseModel, Field
 from datetime import datetime
+
+from schemas.task import ClarifyingQuestion
 
 
 AgentTypeLiteral = Literal["geometry", "material", "physics", "study"]
@@ -120,6 +122,13 @@ class SerialPlan(BaseModel):
 
     steps: List[SerialPlanStep] = Field(default_factory=list, description="串行步骤")
     plan_description: Optional[str] = Field(None, description="整体规划说明（可选）")
+    # 由 Planner 或后处理构造的澄清问题（结构化）
+    clarifying_questions: Optional[List[ClarifyingQuestion]] = Field(
+        default=None, description="规划前需要澄清的问题"
+    )
+    case_library_suggestions: Optional[List[Dict[str, str]]] = Field(
+        default=None, description="官方案例库检索结果建议"
+    )
 
     def step_count(self) -> int:
         return len(self.steps)

@@ -40,16 +40,28 @@
 ## 输出格式
 请仅输出一段 JSON，不要其他文字。结构如下：
 
-{{
+{
   "steps": [
-    {{ "step_index": 1, "agent_type": "geometry", "description": "几何建模任务描述", "input_snippet": "从用户需求抽取的该步输入" }},
+    { "step_index": 1, "agent_type": "geometry", "description": "几何建模任务描述", "input_snippet": "从用户需求抽取的该步输入" },
     ...
   ],
-  "plan_description": "一段简短的建模规划说明（仅包含本次实际会执行的步骤），用于展示给用户。"
-}}
+  "plan_description": "一段简短的建模规划说明（仅包含本次实际会执行的步骤），用于展示给用户。",
+  "clarifying_questions": [
+    {
+      "id": "q1",
+      "text": "问题文案，例如：模型是二维还是三维？",
+      "type": "single",
+      "options": [
+        { "id": "opt_2d", "label": "二维(2D)", "value": "2d" },
+        { "id": "opt_3d", "label": "三维(3D)", "value": "3d" }
+      ]
+    }
+  ]
+}
 
 - agent_type 只能是 geometry、material、physics、study 之一。
 - step_index 从 1 开始连续编号。
 - **再次强调**：仅几何时 steps 只含一条 geometry；未提材料/物理场/求解时不要输出 material/physics/study。
+- clarifying_questions 字段是可选的，仅当你认为**当前信息不足以直接给出稳定 plan**时才输出；数量控制在 1–3 条，每个问题必须给出 2–6 个 options，id 不要包含空格。
 
 请只输出上述格式的 JSON。

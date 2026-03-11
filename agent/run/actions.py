@@ -7,23 +7,26 @@ from agent.core.dependencies import get_agent, get_context_manager, get_settings
 from agent.core.events import EventBus
 from agent.executor.comsol_runner import COMSOLRunner
 from agent.executor.java_generator import JavaGenerator
+from agent.executor.java_api_controller import JavaAPIController
 from agent.memory import update_conversation_memory
 from agent.utils.env_check import check_environment
 from agent.utils.logger import setup_logging, get_logger
 from schemas.geometry import GeometryPlan
+from schemas.task import ClarifyingAnswer
+from agent.react.exceptions import PlanNeedsClarification
 
 logger = get_logger(__name__)
 
-# 与桌面端新会话快捷提示词一致，用于 /demo 与构建/测试时覆盖各链路（仅几何、几何+材料、物理场、研究、完整流程）
+# 与桌面端新会话快捷提示词一致，用于 /demo，与 COMSOL 案例库风格类似：偏 3D、多物理场、包含求解与结果导出。
 QUICK_TEST_PROMPTS = [
-    "建个宽 1 米、高 0.5 米的矩形就行",
-    "仅几何：创建一个半径为 0.2 米的圆",
-    "只建几何：创建一个 1×0.5×0.3 米的长方体",
-    "创建一个宽 1 米、高 0.5 米的矩形，并分配材料",
-    "创建一个矩形，添加固体传热物理场",
-    "创建一个矩形，添加固体力学物理场",
-    "创建一个矩形，添加传热物理场并做稳态研究",
-    "创建一个传热模型，包含一个矩形域，设置温度边界条件，进行稳态求解",
+    # 3D 热-结构（热应力）
+    "构建一个 3D 铝合金支架热-结构耦合模型：几何为 0.2 m × 0.1 m × 0.05 m 的带两个圆孔支架，材料采用铝合金（给出 E、nu、density 等）；添加固体传热和固体力学，并通过 Thermal Expansion 建立热应力耦合；底面固定且温度 293.15 K，顶面对流换热（h=10 W/(m^2*K)，环境 293.15 K），一侧面施加恒定热通量 5000 W/m^2；生成适中网格，做稳态研究并求解，最后导出温度场云图和等效应力云图到 output/brace_T3D.png 与 output/brace_sigma3D.png。",
+    # 3D 流体-传热（内部冷却）
+    "创建一个 3D 管道内部强制对流换热模型：长度 1 m、内径 0.02 m 的圆柱形流道，外部包覆 0.005 m 厚固体壁；流体为水，固体壁为钢或铜；在流体域添加层流流动与流体中的热传导，在固体壁添加固体传热；入口速度 0.5 m/s、温度 293.15 K，出口压力 0 Pa，外壁恒温 353.15 K；生成包含边界层的网格，配置稳态共轭传热研究并求解，导出流体温度场图像到 output/pipe_ctf_T3D.png。",
+    # 3D 电磁-传热（线圈发热）
+    "构建一个 3D 铜线圈电磁-热耦合模型：若干匝环形铜线圈包围一个钢制工件，外部为空气域；线圈用铜、工件用钢、空气域为空气；在铜线圈和工件区域添加电磁场物理并施加交流电流或电压，使线圈和工件中产生电阻/涡流发热；将电磁发热作为热源耦合到固体传热中，外表面与环境之间采用对流或恒温边界；生成适合 3D 电磁-热问题的网格，做稳态或频域-稳态耦合求解，导出工件温度场云图到 output/coil_heat_T3D.png。",
+    # 3D 参数化传热（散热器）
+    "构建一个 3D 散热器稳态传热参数化扫描模型：基板 0.1 m × 0.1 m × 0.01 m，上方布置多排散热片（高度约 0.03 m，厚度和间距作为参数）；材料为铝；基板底面施加热通量 10000 W/m^2，上表面与散热片外表面对流换热（h=20 W/(m^2*K)，环境 293.15 K）；添加固体传热，生成适中网格，配置稳态研究并添加参数化扫描（例如按散热片厚度/间距扫描 3~5 个取值）；求解完成后，将每个工况下的最大温度或平均温度导出到 CSV 文件 output/heatsink_parametric.csv。",
 ]
 
 
@@ -66,7 +69,8 @@ def do_run(
     skip_check: bool = False,
     verbose: bool = False,
     event_bus: Optional[EventBus] = None,
-) -> Tuple[bool, str]:
+    clarifying_answers: Optional[list[dict[str, Any]]] = None,
+) -> Tuple[bool, str, bool]:
     """执行默认模式：自然语言 -> 创建模型。conversation_id 存在时使用该会话的上下文与摘要。"""
     _ensure_logging(verbose)
     from agent.utils.env_check import validate_environment
@@ -94,12 +98,43 @@ def do_run(
                 event_bus=event_bus,
                 context_manager=context_manager if conversation_id else None,
             )
-            model_path = core.run(
-                user_input,
-                output,
-                memory_context=memory_context,
-                output_dir=output_dir,
-            )
+
+            # 将前端传来的 clarifying_answers dict 列表转换为 Pydantic 模型列表
+            clarifying_models: Optional[list[ClarifyingAnswer]] = None
+            if clarifying_answers:
+                clarifying_models = []
+                for item in clarifying_answers:
+                    try:
+                        clarifying_models.append(ClarifyingAnswer.model_validate(item))
+                    except Exception:
+                        continue
+
+            try:
+                model_path = core.run(
+                    user_input,
+                    output,
+                    memory_context=memory_context,
+                    output_dir=output_dir,
+                    clarifying_answers=clarifying_models,
+                )
+            except PlanNeedsClarification as e:
+                # 计划已生成但需要澄清问题：视为成功，交由前端展示 PLAN_END 事件与问题列表
+                logger.info("Plan 阶段已完成，等待澄清问题回答: %s", e)
+                context_manager.add_conversation(
+                    user_input=user_input,
+                    plan={"architecture": "react", "status": "plan_needs_clarification"},
+                    model_path="",
+                    success=True,
+                )
+                if conversation_id:
+                    _update_memory_after_run(
+                        conversation_id,
+                        user_input,
+                        "计划已生成，等待澄清问题回答",
+                        True,
+                    )
+                return True, "计划已生成，等待澄清问题回答", True
+
             context_manager.add_conversation(
                 user_input=user_input,
                 plan={"architecture": "react"},
@@ -113,7 +148,7 @@ def do_run(
                     f"模型已生成: {model_path}",
                     True,
                 )
-            return True, f"模型已生成: {model_path}"
+            return True, f"模型已生成: {model_path}", False
         else:
             context = memory_context
             planner = get_agent(
@@ -140,13 +175,13 @@ def do_run(
                     f"模型已生成: {model_path}",
                     True,
                 )
-            return True, f"模型已生成: {model_path}"
+            return True, f"模型已生成: {model_path}", False
     except Exception as e:
         logger.exception("do_run 失败")
         context_manager.add_conversation(user_input=user_input, success=False, error=str(e))
         if conversation_id:
             _update_memory_after_run(conversation_id, user_input, str(e), False)
-        return False, str(e)
+        return False, str(e), False
 
 
 def do_plan(
@@ -372,3 +407,24 @@ def do_config_save(env_updates: Optional[dict] = None) -> Tuple[bool, str]:
         return True, "配置已保存并已加载，将应用于后续 mph-agent 调用"
     except Exception as e:
         return False, f"写入 .env 失败: {e}"
+
+
+def do_list_apis(
+    query: Optional[str] = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> Tuple[bool, str]:
+    """
+    列出已集成的 COMSOL 官方 Java API 包装函数。
+    返回 JSON 文本，包含 items/total/limit/offset 等字段。
+    """
+    try:
+        ctrl = JavaAPIController()
+        result = ctrl.list_official_api_wrappers(query=query, limit=limit, offset=offset)
+        if result.get("status") != "success":
+            return False, result.get("message", "list_official_api_wrappers 调用失败")
+        text = json.dumps(result, ensure_ascii=False, indent=2)
+        return True, text
+    except Exception as e:
+        logger.exception("do_list_apis 失败")
+        return False, str(e)

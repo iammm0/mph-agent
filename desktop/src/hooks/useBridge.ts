@@ -57,6 +57,7 @@ export function useBridge() {
           text: res.message,
           success: res.ok,
         });
+        // 若仅生成 Plan 且需要澄清问题，则由 PLAN_END 事件驱动对话框，消息文本保持简短提示
       } catch (e) {
         if (!abortedRef.current) {
           dispatch({
@@ -120,6 +121,10 @@ export function useBridge() {
           dispatch({ type: "SET_DIALOG", dialog: "ops" });
           return;
         }
+        if (cmd === "/api") {
+          dispatch({ type: "SET_DIALOG", dialog: "api" });
+          return;
+        }
         if (cmd === "/demo") {
           addMessage("user", line);
           sendCommand("demo");
@@ -153,6 +158,8 @@ export function useBridge() {
       }
 
       addMessage("user", line);
+      // 记录本次用于触发 /run 的用户输入，供 PlanQuestionsDialog 二次调用使用
+      dispatch({ type: "SET_LAST_PLAN_INPUT", input: line });
 
       const userCount = messages.filter((m) => m.role === "user").length;
       if (userCount <= 1) {
