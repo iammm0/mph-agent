@@ -10,7 +10,7 @@ from agent.utils.prompt_loader import prompt_loader
 from agent.skills import get_skill_injector
 from agent.utils.logger import get_logger
 from agent.core.events import EventBus, EventType
-from schemas.task import ReActTaskPlan, ExecutionStep, ReasoningCheckpoint
+from schemas.task import ReActTaskPlan, ExecutionStep, ReasoningCheckpoint, ClarifyingAnswer
 
 if TYPE_CHECKING:
     from schemas.task import TaskPlan
@@ -144,6 +144,7 @@ class ReasoningEngine:
         user_input: str,
         model_name: str,
         memory_context: Optional[str] = None,
+        clarifying_answers: Optional[List[ClarifyingAnswer]] = None,
     ) -> ReActTaskPlan:
         """
         理解用户需求并规划任务
@@ -160,7 +161,20 @@ class ReasoningEngine:
                 from agent.planner.orchestrator import PlannerOrchestrator
                 kw = {k: v for k, v in self._llm_kwargs.items() if v is not None}
                 orchestrator = PlannerOrchestrator(**kw)
-                task_plan, _, serial_plan = orchestrator.run(user_input, context=memory_context)
+                # 将 clarifying_answers 注入到 Planner 层：在已有上下文前追加一段「澄清答案摘要」
+                extra_ctx = ""
+                if clarifying_answers:
+                    try:
+                        summary_items = [
+                            f"- 问题 {a.question_id}: 选项 {', '.join(a.selected_option_ids) or '（未选择）'}"
+                            for a in clarifying_answers
+                        ]
+                        extra_ctx = "【用户已回答的澄清问题】\n" + "\n".join(summary_items) + "\n\n"
+                    except Exception:
+                        extra_ctx = ""
+                eff_context = (extra_ctx + (memory_context or "")).strip() or None
+
+                task_plan, _, serial_plan = orchestrator.run(user_input, context=eff_context)
                 execution_path = _task_plan_to_execution_path(task_plan)
                 reasoning_path = self.plan_reasoning_path(execution_path)
                 plan_description = (serial_plan.plan_description or "").strip()
@@ -179,6 +193,17 @@ class ReasoningEngine:
                 plan.material_plan = task_plan.material
                 plan.physics_plan = getattr(task_plan, "physics", None)
                 plan.study_plan = getattr(task_plan, "study", None)
+                # 首次调用：Planner 可能会给出 clarifying_questions；二次调用（带 clarifying_answers）时按约定应为空
+                serial_cq = getattr(serial_plan, "clarifying_questions", None)
+                if clarifying_answers:
+                    if serial_cq:
+                        logger.warning("二次调用带 clarifying_answers 仍返回 clarifying_questions，已忽略")
+                    plan.clarifying_questions = None
+                    plan.clarifying_answers = clarifying_answers
+                else:
+                    plan.clarifying_questions = serial_cq
+                    plan.clarifying_answers = None
+                plan.case_library_suggestions = getattr(serial_plan, "case_library_suggestions", None)
                 logger.info("规划完成（编排器）: {} 个执行步骤", len(execution_path))
                 return plan
             except Exception as e:
@@ -216,6 +241,8 @@ class ReasoningEngine:
             plan_description=plan_description.strip() or None,
             stop_after_step=stop_after_step if stop_after_step != "solve" else None,
         )
+        plan.clarifying_questions = understanding.get("clarifying_questions")
+        plan.case_library_suggestions = understanding.get("case_library_suggestions")
         
         logger.info(f"规划完成: {len(execution_path)} 个执行步骤, {len(reasoning_path)} 个检查点")
         
@@ -310,6 +337,7 @@ class ReasoningEngine:
             "import_geometry": "geometry_io",
             "create_selection": "selection",
             "export_results": "postprocess",
+            "call_official_api": "java_api",
         }
 
         # 每步只带该步需要的具体参数
@@ -323,6 +351,15 @@ class ReasoningEngine:
             "import_geometry": {"file_path": params.get("file_path"), "geom_tag": params.get("geom_tag", "geom1")},
             "create_selection": {"tag": params.get("tag", "sel1"), "geom_tag": params.get("geom_tag", "geom1"), "entities": params.get("entities"), "all": params.get("all")},
             "export_results": {"out_path": params.get("out_path"), "plot_group_tag": params.get("plot_group_tag"), "export_type": params.get("export_type")},
+            # 高级：直接调度已集成的官方 Java API
+            # - method + args + target_path → invoke_official_api
+            # - wrapper/wrapper_name → 调用 api_* 包装函数
+            "call_official_api": {
+                "method": params.get("method"),
+                "wrapper": params.get("wrapper") or params.get("wrapper_name"),
+                "args": params.get("args"),
+                "target_path": params.get("target_path"),
+            },
         }
 
         for i, step_action in enumerate(required_steps):

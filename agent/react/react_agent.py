@@ -1,6 +1,6 @@
 """ReAct Agent 核心类"""
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from uuid import uuid4
 
 from agent.react.reasoning_engine import ReasoningEngine
@@ -11,7 +11,7 @@ from agent.utils.llm import LLMClient
 from agent.utils.logger import get_logger
 from agent.utils.config import get_settings
 from agent.core.events import EventBus, EventType
-from schemas.task import ReActTaskPlan, ExecutionStep, Observation
+from schemas.task import ReActTaskPlan, ExecutionStep, Observation, ClarifyingAnswer
 
 logger = get_logger(__name__)
 
@@ -57,7 +57,14 @@ class ReActAgent:
 
         self.max_iterations = max_iterations
     
-    def run(self, user_input: str, output_filename: Optional[str] = None, memory_context: Optional[str] = None, output_dir: Optional[Path] = None) -> Path:
+    def run(
+        self,
+        user_input: str,
+        output_filename: Optional[str] = None,
+        memory_context: Optional[str] = None,
+        output_dir: Optional[Path] = None,
+        clarifying_answers: Optional[List[ClarifyingAnswer]] = None,
+    ) -> Path:
         """
         执行完整的 ReAct 流程
         
@@ -80,11 +87,18 @@ class ReActAgent:
             self._event_bus.emit_type(EventType.PLAN_START, {"user_input": user_input})
             self._event_bus.emit_type(EventType.TASK_PHASE, {"phase": "planning"})
 
-        # 初始化任务计划（注入本会话的摘要记忆）
-        plan = self._initial_plan(user_input, output_filename, memory_context, output_dir=output_dir)
+        # 初始化任务计划（注入本会话的摘要记忆与澄清答案）
+        plan = self._initial_plan(
+            user_input,
+            output_filename,
+            memory_context,
+            output_dir=output_dir,
+            clarifying_answers=clarifying_answers,
+        )
 
         if self._event_bus:
             steps_summary = [{"action": s.action, "step_type": s.step_type} for s in plan.execution_path]
+            requires_clarification = bool(plan.clarifying_questions and not clarifying_answers)
             self._event_bus.emit_type(
                 EventType.PLAN_END,
                 {
@@ -92,8 +106,16 @@ class ReActAgent:
                     "model_name": plan.model_name,
                     "plan_description": getattr(plan, "plan_description", None) or "",
                     "stop_after_step": getattr(plan, "stop_after_step", None),
+                    "clarifying_questions": getattr(plan, "clarifying_questions", None),
+                    "requires_clarification": requires_clarification,
+                    "case_library_suggestions": getattr(plan, "case_library_suggestions", None),
                 },
             )
+
+        # Plan-only 模式：若存在澄清问题且本次未带 clarifying_answers，则仅返回计划，等待前端提问
+        if plan.clarifying_questions and not clarifying_answers:
+            # 使用特定错误类型由上层捕获并转换为「计划已生成，等待澄清问题」
+            raise PlanNeedsClarification("计划已生成，等待澄清问题", plan)
         
         # ReAct 主循环
         for iteration in range(self.max_iterations):
@@ -119,7 +141,11 @@ class ReActAgent:
                 result = self.act(plan, thought)
                 logger.info("[Act] 执行结果: %s", result.get("status", "N/A"))
                 if self._event_bus:
-                    self._event_bus.emit_type(EventType.EXEC_RESULT, {"result": result})
+                    payload: Dict[str, Any] = {"result": result}
+                    ui = result.get("ui") if isinstance(result, dict) else None
+                    if ui:
+                        payload["ui"] = ui
+                    self._event_bus.emit_type(EventType.EXEC_RESULT, payload)
 
                 if self._event_bus:
                     self._event_bus.emit_type(EventType.TASK_PHASE, {"phase": "observing"})
@@ -161,17 +187,22 @@ class ReActAgent:
         
         # 检查最终状态
         if plan.status != "completed":
-            suggestions = self._generate_integration_suggestions(plan)
-            if suggestions:
-                plan.integration_suggestions = suggestions
-                err_text = plan.error or "任务未完成"
-                if hasattr(plan, "integration_suggestions") and plan.integration_suggestions:
-                    err_text = err_text + "\n\n【建议集成的 COMSOL Java API 接口】\n" + plan.integration_suggestions
-                plan.error = err_text
-            if plan.status == "failed":
-                raise RuntimeError(plan.error or "任务失败")
-            else:
-                raise RuntimeError(plan.error or f"任务未完成（达到最大迭代次数: {self.max_iterations}）")
+            # 统一构造错误信息；若模型文件已存在，则提示“模型已部分生成”，便于用户后续在 COMSOL 中继续处理。
+            base_msg = plan.error or (
+                f"任务未完成（达到最大迭代次数: {self.max_iterations}）"
+                if plan.status != "failed"
+                else "任务失败"
+            )
+            msg = base_msg or "任务失败"
+            partial_path = getattr(plan, "model_path", None)
+            if partial_path:
+                try:
+                    model_path = Path(partial_path)
+                    if model_path.exists():
+                        msg = f"{msg}；模型已部分生成: {model_path}"
+                except Exception:
+                    pass
+            raise RuntimeError(msg)
         
         # 保存模型
         if plan.model_path:
@@ -298,7 +329,14 @@ class ReActAgent:
         
         return updated_plan
     
-    def _initial_plan(self, user_input: str, output_filename: Optional[str] = None, memory_context: Optional[str] = None, output_dir: Optional[Path] = None) -> ReActTaskPlan:
+    def _initial_plan(
+        self,
+        user_input: str,
+        output_filename: Optional[str] = None,
+        memory_context: Optional[str] = None,
+        output_dir: Optional[Path] = None,
+        clarifying_answers: Optional[List[ClarifyingAnswer]] = None,
+    ) -> ReActTaskPlan:
         """
         初始化任务计划
 
@@ -314,8 +352,13 @@ class ReActAgent:
         task_id = str(uuid4())
         model_name = output_filename.replace(".mph", "") if output_filename else f"model_{task_id[:8]}"
 
-        # 使用推理引擎理解需求并规划（可注入会话摘要）
-        initial_plan = self.reasoning_engine.understand_and_plan(user_input, model_name, memory_context=memory_context)
+        # 使用推理引擎理解需求并规划（可注入会话摘要与澄清答案）
+        initial_plan = self.reasoning_engine.understand_and_plan(
+            user_input,
+            model_name,
+            memory_context=memory_context,
+            clarifying_answers=clarifying_answers,
+        )
 
         # 添加 geometry_plan 属性占位符（用于存储几何计划）
         initial_plan.geometry_plan = None

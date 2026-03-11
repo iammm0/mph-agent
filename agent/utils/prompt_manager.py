@@ -31,7 +31,9 @@ DEFAULT_TEMPLATES: Dict[str, str] = {
     "mesh": {{ "max_element_size": 0.05 }},
     "study_input": "稳态研究，求解"
   }},
-  "plan_description": "一段完整的具体规划说明：创建何种几何、在哪些地方添加什么材料、添加什么物理场、生成什么网格、配置什么研究与求解思路。用于展示给用户，不要笼统复述需求。"
+  "plan_description": "一段完整的具体规划说明：创建何种几何、在哪些地方添加什么材料、添加什么物理场、生成什么网格、配置什么研究与求解思路。用于展示给用户，不要笼统复述需求。",
+  "clarifying_questions": ["问题 1", "问题 2"],
+  "case_library_suggestions": []
 }}""",
     "react/planning": """根据当前状态规划下一步。模型：{model_name} 需求：{user_input} 已完成：{completed_steps} 当前步骤：{current_step} 观察：{observations} 以 JSON 返回 action, reasoning, parameters, expected_result。""",
     "react/validation": """验证建模计划。计划 JSON：{plan_json} 以 JSON 返回 valid, errors, warnings, suggestions。""",

@@ -28,7 +28,9 @@
         "mesh": {{ "max_element_size": 0.05 }},
         "study_input": "稳态研究，求解"
     }},
-    "plan_description": "一段完整的具体规划说明：创建何种几何、在哪些地方添加什么材料、添加什么物理场、生成什么网格、配置什么研究与求解思路。用于展示给用户，不要笼统复述需求。"
+  "plan_description": "一段完整的具体规划说明：创建何种几何、在哪些地方添加什么材料、添加什么物理场、生成什么网格、配置什么研究与求解思路。用于展示给用户，不要笼统复述需求。",
+  "clarifying_questions": ["问题 1", "问题 2"],
+  "case_library_suggestions": []
 }}
 
 ## 步骤标识
@@ -36,6 +38,9 @@
 - import_geometry：导入几何文件（需 file_path；可选 geom_tag）
 - create_selection：创建选择集（需 tag；可选 entities、all、geom_tag）
 - export_results：导出结果图或数据（需 out_path；可选 plot_group_tag、export_type 为 image/data）
+- call_official_api：调用**已集成的 COMSOL 官方 Java API**。用于高级/细粒度操作，不是新增接口，而是组合已有接口。
+  - 若使用 `method` 字段，则调用当前 target 上的 Java 方法（配合 target_path，例如 `model.component(\"comp1\").geom(\"geom1\")` 链式路径）。
+  - 若使用 `wrapper`/`wrapper_name` 字段，则调用已经生成好的 `api_*` 包装函数（如 `api_model_shortcuttarget`），由控制器内部映射到对应官方 API。
 
 ## 规则
 1. 几何通常是第一步；材料在几何之后、物理场之前。
@@ -45,6 +50,12 @@
 5. 若用户要求「导入几何文件」或「从 STEP/IGES 导入」，在几何步骤后加入 import_geometry，parameters 中提供 file_path。
 6. 若用户要求「创建选择集」或「在边界/域上建选区」，可加入 create_selection，parameters 中提供 tag、entities 或 all。
 7. 若用户要求「导出结果图」或「导出数据」，在 solve 之后加入 export_results，parameters 中提供 out_path、plot_group_tag（可选）。
-8. parameters 中每项都要写具体、可执行描述，不要留空或写「根据用户需求」。
+8. 若用户提出需要依赖**官方 Java API 进行细致控制**（例如修改已有节点高级属性、批量遍历节点树等），可以在 required_steps 里追加 `call_official_api`，并在 parameters 中给出：
+   - method（或 wrapper_name）：要调用的方法名/包装函数名；
+   - args：传入该方法的参数数组；
+   - target_path：从 model 出发到目标对象的链式调用路径（如需要）。
+9. parameters 中每项都要写具体、可执行描述，不要留空或写「根据用户需求」。
+10. 若关键信息缺失，请在 clarifying_questions 中列出需要澄清的问题；否则留空数组。
+11. 不要编造官方案例库链接；case_library_suggestions 留空数组即可。
 
 请根据用户需求返回唯一一段合法 JSON。
