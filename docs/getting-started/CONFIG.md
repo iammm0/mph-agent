@@ -61,7 +61,7 @@ LOG_LEVEL=INFO
 运行环境诊断检查配置是否正确：
 
 ```bash
-uv run mph-agent
+uv run python cli.py
 ```
 
 在 TUI 内输入 `/doctor`。诊断会检查：

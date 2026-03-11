@@ -2,7 +2,7 @@
 
 将自然语言描述的 COMSOL 建模需求自动转换为完整 .mph 模型文件的智能 Agent，支持几何、物理场、网格、研究与求解的完整仿真流程。本项目**仅基于 COMSOL 官方开放的 Java API 进行二次开发**，仅供学习与交流使用。
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
@@ -21,7 +21,7 @@
 
 ## 简介
 
-Multiphysics Modeling Agent（mph-agent）基于 **ReAct（Reasoning & Acting）** 架构：通过自然语言理解需求、规划建模步骤、执行 COMSOL Java API 并观察结果、迭代改进，最终生成可直接在 COMSOL Multiphysics 中打开的 `.mph` 模型文件。提供 **Tauri + React 桌面应用** 与 **Python API** 两种使用方式，支持多种 LLM 后端（DeepSeek、Kimi、Ollama、OpenAI 兼容等）。
+Multiphysics Modeling Agent（mph-agent）基于 **ReAct（Reasoning & Acting）** 架构：通过自然语言理解需求、规划建模步骤、执行 COMSOL Java API 并观察结果、迭代改进，最终生成可直接在 COMSOL Multiphysics 中打开的 `.mph` 模型文件。提供 **Tauri + React 桌面应用** 与 **源码运行**，不提供 Python 包分发；支持多种 LLM 后端（DeepSeek、Kimi、Ollama、OpenAI 兼容等）。
 
 ---
 
@@ -57,9 +57,11 @@ Multiphysics Modeling Agent（mph-agent）基于 **ReAct（Reasoning & Acting）
 
 ## 安装
 
+本项目**仅提供桌面版安装包与源码运行**，不提供 Python 包（pip install）分发。
+
 ### 环境要求
 
-- **Python 3.8+**
+- **Python 3.12+**
 - **COMSOL Multiphysics**（已安装）
 - **Java JDK 8+**（与 COMSOL 兼容；项目也可使用内置 JDK 11）
 
@@ -67,7 +69,7 @@ Multiphysics Modeling Agent（mph-agent）基于 **ReAct（Reasoning & Acting）
 
 从 [GitHub Releases](https://github.com/iammm0/mph-agent/releases) 下载 Windows 安装包（exe 或 msi，tag 格式为 `desktop-v*`），安装后运行即可。安装包内已包含 **Java 11**，无需单独安装 Python 或 JDK。暂不支持 macOS/Linux 桌面版。
 
-### 方式二：从源码运行（含桌面应用）
+### 方式二：从源码运行（桌面端与源码运行，不提供 Python 包）
 
 ```bash
 git clone https://github.com/iammm0/mph-agent.git
@@ -77,21 +79,12 @@ cd mph-agent
 uv sync
 
 # 启动桌面应用（无参数即启动 Tauri 桌面端）
-uv run mph-agent
+uv run python cli.py
 ```
 
 开发模式下需安装 [Node.js](https://nodejs.org/) 与 [Rust](https://rustup.rs/)；若已构建过桌面端，会优先运行本地可执行文件。
 
 若您从旧名称 comsol-agent 迁移，请将命令与配置中的 `comsol-agent` 改为 `mph-agent`，桌面端需重新安装以更新产品名与 identifier。
-
-### 方式三：仅安装 Python 包（无桌面 UI）
-
-```bash
-uv sync
-# 或构建分发包后安装
-uv build
-uv pip install dist/mph_agent-*.whl
-```
 
 安装与构建细节见 [docs/getting-started/INSTALL.md](docs/getting-started/INSTALL.md)。
 
@@ -136,14 +129,16 @@ COMSOL_JAR_PATH=C:\Program Files\COMSOL\COMSOL63\Multiphysics\plugins
 ### 桌面应用（推荐）
 
 ```bash
-uv run mph-agent
+uv run python cli.py
 ```
 
 - **默认模式**：底部输入框输入自然语言建模需求（如「创建一个宽 1 米、高 0.5 米的矩形」），直接生成 COMSOL 模型。
 - **计划模式**：输入 `/plan` 切换为仅解析为 JSON；`/run` 切回默认模式。
 - **斜杠命令**：`/demo` 演示、`/doctor` 环境诊断、`/context` 摘要与历史、`/backend` 选择 LLM、`/output` 设置输出文件名、`/help` 帮助、`/quit` 退出。
 
-### Python API
+### Python API（源码运行下使用）
+
+在项目根目录执行 `uv sync` 后，可从源码导入使用：
 
 ```python
 from agent.react.react_agent import ReActAgent

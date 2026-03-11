@@ -252,7 +252,7 @@ flowchart TB
 
 ## 七、技术栈
 
-- **Python 3.8+**
+- **Python 3.12+**
 - **LLM**：多后端（Dashscope/DeepSeek、Kimi、OpenAI 兼容、Ollama 等），见 `agent/utils/llm.py` 与 `docs/getting-started/llm-backends.md`
 - **桌面端**：Tauri 2 + React；与后端通过 TUI Bridge（stdin/stdout JSON 行）通信
 - **Java 互操作**：jpype1，COMSOL Java API（6.1+，6.3+ 推荐 plugins 目录）

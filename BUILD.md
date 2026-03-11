@@ -17,7 +17,7 @@
 ## 前置条件
 
 - **Windows**（当前仅支持 Windows 桌面安装包）
-- **Python 3.8+**（建议使用 uv：<https://docs.astral.sh/uv/>）
+- **Python 3.12+**（建议使用 uv：<https://docs.astral.sh/uv/>）
 - **Node.js LTS**（用于前端与 Tauri 构建）
 - **Rust**（stable，用于 Tauri）
 - **npm** 已安装（在 `desktop` 目录执行 `npm ci` 需可用）

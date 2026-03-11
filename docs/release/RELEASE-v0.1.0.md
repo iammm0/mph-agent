@@ -1,6 +1,6 @@
 # Multiphysics Modeling Agent Desktop v0.1.0 — 首个版本发布说明
 
-**发布日期**：2025 年 2 月  
+**发布日期**：2026 年 2 月  
 **版本**：0.1.0  
 **桌面端 Tag**：`desktop-v0.1.0`
 
