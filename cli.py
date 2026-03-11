@@ -91,7 +91,7 @@ def main() -> None:
 
     if not args or (len(args) == 1 and args[0] in ("--help", "-h", "--interactive", "-i")):
         if args and args[0] in ("--help", "-h"):
-            print("Usage: mph-agent  或  mph-agent tui-bridge")
+            print("Usage: uv run python cli.py  或  uv run python cli.py tui-bridge")
             print("  无参数启动桌面应用；tui-bridge 供内部调用，勿直接使用。")
         _launch_desktop(root)
         return
@@ -111,7 +111,7 @@ def main() -> None:
         bridge_main()
         return
 
-    print("Usage: mph-agent  或  mph-agent tui-bridge", file=sys.stderr)
+    print("Usage: uv run python cli.py  或  uv run python cli.py tui-bridge", file=sys.stderr)
     print("  无参数启动桌面应用；run/plan/exec 等请在桌面应用内使用。", file=sys.stderr)
     sys.exit(1)
 

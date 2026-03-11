@@ -1,4 +1,4 @@
-"""主启动程序 - 用于调试和开发。推荐使用 uv run mph-agent（无参数）进入全终端 TUI。"""
+"""主启动程序 - 用于调试和开发。推荐使用 uv run python cli.py 启动桌面应用。"""
 import sys
 from pathlib import Path
 
