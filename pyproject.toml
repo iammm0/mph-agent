@@ -36,7 +36,6 @@ dependencies = [
     "setuptools>=61.0",
     "questionary>=1.10.0",
     "sqlite-vec>=0.1.0",
-    "celery>=5.5.3",
 ]
 
 [project.optional-dependencies]
@@ -49,11 +48,7 @@ dev = [
 vec = [
     "sentence-transformers>=2.2.0",
 ]
-# 记忆 Agent 后台：Celery + Redis，用于异步更新会话摘要
-memory = [
-    "celery>=5.3.0",
-    "redis>=4.0.0",
-]
+# 记忆模块已内置：Python 原生异步 + 本地 SQLite/文件，无需额外依赖
 
 # 不再设定 Python 包，仅保留桌面端与源码运行；使用 uv run python cli.py 启动
 
