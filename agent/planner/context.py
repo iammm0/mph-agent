@@ -1,7 +1,7 @@
 """
 Planner 层 A2A 共享上下文与串行计划数据结构。
 
-编排器将用户提示词拆解为串行任务后，按顺序调用几何/材料/物理场/研究四个 Agent。
+编排器将用户提示词拆解为串行任务后，按顺序调用几何/材料/物理场/网格/研究五个 Agent。
 每个 Agent 执行前后可读写共享上下文，以便在遇到 error/exception 时，
 其余 Agent 能获知已完成的修改与错误信息，便于重试或适配。
 """
@@ -12,7 +12,7 @@ from datetime import datetime
 from schemas.task import ClarifyingQuestion
 
 
-AgentTypeLiteral = Literal["geometry", "material", "physics", "study"]
+AgentTypeLiteral = Literal["geometry", "material", "physics", "mesh", "study"]
 
 
 class PlannerStepRecord(BaseModel):

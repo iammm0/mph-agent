@@ -26,6 +26,8 @@ class EventType(str, Enum):
     # 具体步骤：开始/结束，便于交互板块逐步渲染
     STEP_START = "step_start"
     STEP_END = "step_end"
+    # 一次构建任务结束（成功/失败/中止），携带最终模型路径，便于前端始终提供打开/预览
+    RUN_END = "run_end"
 
 
 @dataclass

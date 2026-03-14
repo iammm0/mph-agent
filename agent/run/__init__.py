@@ -2,6 +2,7 @@
 from agent.run.actions import (
     do_run,
     do_plan,
+    do_plan_mode,
     do_exec_from_file,
     do_demo,
     do_doctor,
@@ -19,6 +20,7 @@ from agent.run.tui_bridge import main as tui_bridge_main
 __all__ = [
     "do_run",
     "do_plan",
+    "do_plan_mode",
     "do_exec_from_file",
     "do_demo",
     "do_doctor",

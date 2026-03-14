@@ -37,7 +37,6 @@ DEFAULT_TEMPLATES: Dict[str, str] = {
 }}""",
     "react/planning": """根据当前状态规划下一步。模型：{model_name} 需求：{user_input} 已完成：{completed_steps} 当前步骤：{current_step} 观察：{observations} 以 JSON 返回 action, reasoning, parameters, expected_result。""",
     "react/validation": """验证建模计划。计划 JSON：{plan_json} 以 JSON 返回 valid, errors, warnings, suggestions。""",
-    "executor/java_codegen": """根据计划生成 COMSOL Java API 代码。计划 JSON：{plan_json} 只输出可执行 Java 源码。""",
 }
 
 

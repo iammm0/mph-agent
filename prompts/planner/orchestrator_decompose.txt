@@ -5,8 +5,8 @@
 - **仅几何**：如“创建矩形”“建个几何”“画个圆”“宽 1 米高 0.5 米的矩形”→ 只输出 **geometry**，流程到此结束。
 - **几何 + 材料**：用户明确要赋材料、选材料、设属性 → 输出 **geometry, material**，加完材料即结束。
 - **几何 + 物理场**：用户明确要加传热/静电场/力学等 → 输出 **geometry, material, physics**，加完物理场即结束。
-- **几何 + 网格**：用户只说划分网格、生成网格，未要求求解 → 输出到 **geometry, material, physics**（网格在执行层或 study 中处理；若用户明确“只画网格”可仅 geometry + 必要前置，按实现为准）。
-- **完整流程**：用户明确说“求解”“算一下”“完整做一遍”“建好并求解”“仿真”等 → 输出 **geometry, material, physics, study**，做到研究/求解为止。
+- **几何 + 网格**：用户只说划分网格、生成网格、网格加密等，未要求求解 → 输出 **geometry, material, physics, mesh**（mesh 由网格 Agent 规划；若用户明确“只画网格”可到 mesh 即结束）。
+- **完整流程**：用户明确说“求解”“算一下”“完整做一遍”“建好并求解”“仿真”等 → 输出 **geometry, material, physics, mesh, study**，做到研究/求解为止。
 
 **原则**：用户没说要做的事，就不要输出对应步骤；有明显“只/仅/就…就行”时，严格按用户说的范围停止。
 
@@ -15,14 +15,16 @@
 - 仅当用户**明确提到**或**明显涉及**以下内容时，才加入对应步骤：
   - **material**：用户提到材料、赋材料、钢材、铜、铝、属性分配、材料参数等。
   - **physics**：用户提到物理场、传热、热传导、静电场、固体力学、流体、电磁等。
+  - **mesh**：用户提到网格、划分网格、网格加密、单元尺寸、网格精度等。
   - **study**：用户提到研究、求解、仿真、稳态、瞬态、计算、算一下、完整流程等。
 - 若用户输入**仅涉及形状、尺寸、几何**，且未提材料/物理场/求解，则 steps 中**只能有一条** agent_type 为 "geometry"。
 
 ## COMSOL 建模顺序与依赖（不可打乱）
 1. **geometry**（几何建模）— 必须先有几何。
-2. **material**（材料）— 仅当用户要求加材料时才有。
+2. **material**（材料）— 仅当用户要求加材料时才有。若后续有 **physics 含传热/固体传热**，则 material 步骤的 description 或 input_snippet 中应写明：为固体域定义材料属性导热系数 k（thermalconductivity），否则求解会报「未定义固体 1 所需的材料属性 k」。
 3. **physics**（物理场）— 仅当用户要求加物理场时才有。
-4. **study**（研究/求解配置）— 仅当用户要求求解/研究时才有（执行层会含网格与求解）。
+4. **mesh**（网格划分）— 仅当用户要求划分网格或需要求解时才有（由网格 Agent 规划）。
+5. **study**（研究/求解配置）— 仅当用户要求求解/研究时才有。
 
 ## 示例（完成范围 → 步骤）
 - “创建一个宽 1 米、高 0.5 米的矩形” → 仅 **geometry**（建完几何即结束）。
@@ -31,8 +33,8 @@
 - “画一个矩形并给整个域赋钢材” → **geometry, material**（加完材料即结束）。
 - “做一个二维传热模型” → **geometry, material, physics**（若未说求解则不含 study）。
 - “加完物理场就行，先不求解” → **geometry, material, physics**。
-- “划分完网格” / “生成网格” → 通常 **geometry, material, physics**（网格在执行层处理；未要求求解则不含 study）。
-- “创建静电场模型并求解” / “完整做一遍” / “建好并算一下” → **geometry, material, physics, study**。
+- “划分完网格” / “生成网格” / “网格加密” → **geometry, material, physics, mesh**（未要求求解则不含 study）。
+- “创建静电场模型并求解” / “完整做一遍” / “建好并算一下” → **geometry, material, physics, mesh, study**。
 
 ## 用户需求
 {user_input}
@@ -52,16 +54,21 @@
       "text": "问题文案，例如：模型是二维还是三维？",
       "type": "single",
       "options": [
+        { "id": "opt_3d", "label": "推荐：三维(3D)", "value": "3d", "recommended": true },
         { "id": "opt_2d", "label": "二维(2D)", "value": "2d" },
-        { "id": "opt_3d", "label": "三维(3D)", "value": "3d" }
+        { "id": "opt_supplement", "label": "其他（请补充）", "value": "supplement" }
       ]
     }
   ]
 }
 
-- agent_type 只能是 geometry、material、physics、study 之一。
+- agent_type 只能是 geometry、material、physics、mesh、study 之一。
 - step_index 从 1 开始连续编号。
 - **再次强调**：仅几何时 steps 只含一条 geometry；未提材料/物理场/求解时不要输出 material/physics/study。
 - clarifying_questions 字段是可选的，仅当你认为**当前信息不足以直接给出稳定 plan**时才输出；数量控制在 1–3 条，每个问题必须给出 2–6 个 options，id 不要包含空格。
+- **推荐选项**：每个问题的**第一个 option** 应为根据用户描述推断的**推荐答案**，label 以「推荐：」开头并写出具体建议（如「推荐：三维(3D)」「推荐：稳态研究」），且设置 "recommended": true，便于用户一键采纳。
+- **强制要求**：每个 clarifying_questions[i].options 里都必须**显式包含**一个“补充选项”，格式固定为：
+  { "id": "opt_supplement", "label": "其他（请补充）", "value": "supplement" }
+- 该“补充选项”必须与其它候选并列出现在 options 数组中，不要省略、不要改 id/value。
 
 请只输出上述格式的 JSON。

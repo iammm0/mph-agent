@@ -58,6 +58,7 @@ class ContextManager:
         self.summary_file = self.context_dir / "summary.json"
         self.latest_model_file = self.context_dir / "latest_model.txt"
         self.operations_file = self.context_dir / "operations.md"
+        self.plan_file = self.context_dir / "plan.json"
 
     def set_latest_model(self, model_path: str) -> None:
         """标记当前会话下最新修改的模型路径，便于用户查看。"""
@@ -77,6 +78,26 @@ class ContextManager:
             return self.latest_model_file.read_text(encoding="utf-8").strip() or None
         except Exception:
             return None
+
+    def load_plan(self) -> Optional[Dict[str, Any]]:
+        """加载当前会话的 plan.json（Plan 模式持久化）。"""
+        if not self.plan_file.exists():
+            return None
+        try:
+            with open(self.plan_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning("加载 plan.json 失败: %s", e)
+            return None
+
+    def save_plan(self, plan_dict: Dict[str, Any]) -> None:
+        """保存 plan.json 到当前会话目录（Plan 模式）。"""
+        try:
+            with open(self.plan_file, "w", encoding="utf-8") as f:
+                json.dump(plan_dict, f, ensure_ascii=False, indent=2)
+            logger.debug("已保存 plan.json")
+        except Exception as e:
+            logger.warning("保存 plan.json 失败: %s", e)
 
     def start_run_log(self, user_input: str) -> None:
         """开始一次建模运行的记录，写入 operations.md 的段落头。"""

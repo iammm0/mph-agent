@@ -1,4 +1,4 @@
-"""核心基础设施：基类、事件、路由、会话、依赖注入、Celery。"""
+"""核心基础设施：基类、事件、路由、会话、依赖注入。"""
 from agent.core.base import BaseAgent
 from agent.core.events import EventBus, Event, EventType
 from agent.core.router import route

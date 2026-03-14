@@ -6,6 +6,7 @@ from schemas.physics import (
     BoundaryCondition, DomainCondition, InitialCondition, CouplingDefinition,
 )
 from schemas.study import StudyType, StudyPlan, ParametricSweep
+from schemas.mesh import MeshPlan, RefinementRegion
 from schemas.message import AgentMessage
 
 __all__ = [
@@ -14,5 +15,6 @@ __all__ = [
     "PhysicsField", "PhysicsPlan",
     "BoundaryCondition", "DomainCondition", "InitialCondition", "CouplingDefinition",
     "StudyType", "StudyPlan", "ParametricSweep",
+    "MeshPlan", "RefinementRegion",
     "AgentMessage",
 ]

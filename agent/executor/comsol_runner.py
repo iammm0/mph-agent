@@ -1,11 +1,12 @@
 """COMSOL API 运行器 — 支持 2D/3D 几何"""
+
 import os
 import platform
 import shutil
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
-from agent.utils.config import get_settings, get_project_root
+from agent.utils.config import get_project_root, get_settings
 from agent.utils.java_runtime import ensure_bundled_java
 from agent.utils.logger import get_logger
 from schemas.geometry import GeometryPlan, GeometryShape
@@ -19,7 +20,8 @@ logger = get_logger(__name__)
 def _jpype():
     """延迟导入 jpype，便于 bridge 在未安装 jpype1 时也能启动；缺包时在首次使用 COMSOL 时报错。"""
     try:
-        import jpype
+        import jpype  # type: ignore[import-not-found]
+
         return jpype
     except ModuleNotFoundError as e:
         raise RuntimeError(
@@ -220,7 +222,11 @@ class COMSOLRunner:
         w = shape.parameters["width"]
         h = shape.parameters["height"]
         d = shape.parameters["depth"]
-        x, y, z = shape.position.get("x", 0.0), shape.position.get("y", 0.0), shape.position.get("z", 0.0)
+        x, y, z = (
+            shape.position.get("x", 0.0),
+            shape.position.get("y", 0.0),
+            shape.position.get("z", 0.0),
+        )
         geom = self._geom(model)
         feat = geom.create(name, "Block")
         feat.set("size", [w, d, h])
@@ -229,7 +235,11 @@ class COMSOLRunner:
     def create_cylinder(self, model, shape: GeometryShape, name: Optional[str] = None) -> None:
         name = name or shape.name or "cyl1"
         r, h = shape.parameters["radius"], shape.parameters["height"]
-        x, y, z = shape.position.get("x", 0.0), shape.position.get("y", 0.0), shape.position.get("z", 0.0)
+        x, y, z = (
+            shape.position.get("x", 0.0),
+            shape.position.get("y", 0.0),
+            shape.position.get("z", 0.0),
+        )
         geom = self._geom(model)
         feat = geom.create(name, "Cylinder")
         feat.set("r", r)
@@ -239,7 +249,11 @@ class COMSOLRunner:
     def create_sphere(self, model, shape: GeometryShape, name: Optional[str] = None) -> None:
         name = name or shape.name or "sph1"
         r = shape.parameters["radius"]
-        x, y, z = shape.position.get("x", 0.0), shape.position.get("y", 0.0), shape.position.get("z", 0.0)
+        x, y, z = (
+            shape.position.get("x", 0.0),
+            shape.position.get("y", 0.0),
+            shape.position.get("z", 0.0),
+        )
         geom = self._geom(model)
         feat = geom.create(name, "Sphere")
         feat.set("r", r)
@@ -250,7 +264,11 @@ class COMSOLRunner:
         rb = shape.parameters["radius_bottom"]
         rt = shape.parameters.get("radius_top", 0.0)
         h = shape.parameters["height"]
-        x, y, z = shape.position.get("x", 0.0), shape.position.get("y", 0.0), shape.position.get("z", 0.0)
+        x, y, z = (
+            shape.position.get("x", 0.0),
+            shape.position.get("y", 0.0),
+            shape.position.get("z", 0.0),
+        )
         geom = self._geom(model)
         feat = geom.create(name, "Cone")
         feat.set("r", rb)
@@ -262,7 +280,11 @@ class COMSOLRunner:
         name = name or shape.name or "tor1"
         rmaj = shape.parameters["radius_major"]
         rmin = shape.parameters["radius_minor"]
-        x, y, z = shape.position.get("x", 0.0), shape.position.get("y", 0.0), shape.position.get("z", 0.0)
+        x, y, z = (
+            shape.position.get("x", 0.0),
+            shape.position.get("y", 0.0),
+            shape.position.get("z", 0.0),
+        )
         geom = self._geom(model)
         feat = geom.create(name, "Torus")
         feat.set("rmaj", rmaj)
@@ -289,9 +311,31 @@ class COMSOLRunner:
             raise ValueError(f"不支持的形状类型: {shape.type}")
         getattr(self, creator_name)(model, shape)
 
+    @staticmethod
+    def _seq_has(seq, name: str) -> bool:
+        """检查节点列表是否包含 name。兼容无 .has() 的 ModelNodeListClient/GeomListClient。"""
+        if seq is None:
+            return False
+        if hasattr(seq, "has"):
+            try:
+                return bool(seq.has(name))
+            except Exception:
+                pass
+        for attr in ("names", "tags"):
+            if hasattr(seq, attr):
+                try:
+                    n = getattr(seq, attr)()
+                    if n is not None:
+                        return name in [str(x) for x in n]
+                except Exception:
+                    pass
+        return False
+
     def _geom(self, model, geom_name: str = "geom1"):
         try:
-            if model.component().has("comp1") and model.component("comp1").geom().has(geom_name):
+            if self._seq_has(model.component(), "comp1") and self._seq_has(
+                model.component("comp1").geom(), geom_name
+            ):
                 return model.component("comp1").geom(geom_name)
         except Exception:
             pass
@@ -323,7 +367,12 @@ class COMSOLRunner:
         logger.info(f"模型已成功保存: {output_path}")
         return output_path
 
-    def create_model_from_plan(self, plan: GeometryPlan, output_filename: Optional[str] = None, output_dir: Optional[Path] = None) -> Path:
+    def create_model_from_plan(
+        self,
+        plan: GeometryPlan,
+        output_filename: Optional[str] = None,
+        output_dir: Optional[Path] = None,
+    ) -> Path:
         safe_name = (plan.model_name or "model").replace(" ", "_").strip() or "model"
         dimension = plan.dimension
         logger.info(f"根据计划创建 {dimension}D 模型: {safe_name}")

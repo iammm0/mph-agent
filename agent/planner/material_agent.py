@@ -61,11 +61,16 @@ class MaterialAgent:
         settings = get_settings()
         b = backend or settings.llm_backend
         key = api_key or settings.get_api_key_for_backend(b)
+        # 避免 kwargs 与显式参数重复导致 LLMClient(base_url=...) got multiple values
+        base_url = kwargs.pop("base_url", None) or settings.get_base_url_for_backend(b)
+        ollama_url = kwargs.pop("ollama_url", None) or settings.ollama_url
+        model = kwargs.pop("model", None) or settings.get_model_for_backend(b)
         self.llm = LLMClient(
             backend=b,
             api_key=key,
-            base_url=settings.get_base_url_for_backend(b),
-            **kwargs,
+            base_url=base_url,
+            ollama_url=ollama_url,
+            model=model,
         )
 
     def _extract_json_from_response(self, response_text: str) -> dict:

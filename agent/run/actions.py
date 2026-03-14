@@ -1,19 +1,19 @@
 """无 Typer 依赖的纯函数：供 TUI 与 CLI 子命令共用的 do_run、do_plan、do_exec 等。"""
+import asyncio
 import json
 from pathlib import Path
-from typing import Optional, Tuple, Any
+from typing import Any, Dict, Optional, Tuple
 
 from agent.core.dependencies import get_agent, get_context_manager, get_settings
 from agent.core.events import EventBus
 from agent.executor.comsol_runner import COMSOLRunner
-from agent.executor.java_generator import JavaGenerator
 from agent.executor.java_api_controller import JavaAPIController
-from agent.memory import update_conversation_memory
+from agent.memory import update_conversation_memory, update_conversation_memory_async
 from agent.utils.env_check import check_environment
 from agent.utils.logger import setup_logging, get_logger
 from schemas.geometry import GeometryPlan
 from schemas.task import ClarifyingAnswer
-from agent.react.exceptions import PlanNeedsClarification
+from agent.react.exceptions import PlanNeedsClarification, ReActNeedsReorchestrate
 
 logger = get_logger(__name__)
 
@@ -36,14 +36,26 @@ def _update_memory_after_run(
     assistant_summary: str,
     success: bool,
 ) -> None:
-    """有 conversation_id 时更新会话记忆；优先 Celery 异步，不可用时同步执行。"""
+    """有 conversation_id 时异步更新会话记忆（本地异步 IO，无 Redis/Celery）。"""
     if not conversation_id:
         return
     try:
-        from agent.memory.tasks import update_memory_task
-        update_memory_task.delay(
-            conversation_id, user_input, assistant_summary, success
-        )
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop is not None:
+            loop.create_task(
+                update_conversation_memory_async(
+                    conversation_id, user_input, assistant_summary, success
+                )
+            )
+        else:
+            asyncio.run(
+                update_conversation_memory_async(
+                    conversation_id, user_input, assistant_summary, success
+                )
+            )
     except Exception:
         update_conversation_memory(
             conversation_id, user_input, assistant_summary, success
@@ -70,15 +82,16 @@ def do_run(
     verbose: bool = False,
     event_bus: Optional[EventBus] = None,
     clarifying_answers: Optional[list[dict[str, Any]]] = None,
+    given_plan: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, str, bool]:
-    """执行默认模式：自然语言 -> 创建模型。conversation_id 存在时使用该会话的上下文与摘要。"""
+    """执行默认模式：自然语言 -> 创建模型。given_plan 非空时（Plan 模式进入）直接使用该计划，跳过编排。"""
     _ensure_logging(verbose)
     from agent.utils.env_check import validate_environment
 
     if not skip_check:
         is_valid, error_msg = validate_environment()
         if not is_valid:
-            return False, f"环境检查未通过: {error_msg}"
+            return False, f"环境检查未通过: {error_msg}", False
 
     context_manager = get_context_manager(conversation_id)
     memory_context = None if no_context else context_manager.get_context_for_planner()
@@ -116,6 +129,7 @@ def do_run(
                     memory_context=memory_context,
                     output_dir=output_dir,
                     clarifying_answers=clarifying_models,
+                    given_plan=given_plan,
                 )
             except PlanNeedsClarification as e:
                 # 计划已生成但需要澄清问题：视为成功，交由前端展示 PLAN_END 事件与问题列表
@@ -134,6 +148,41 @@ def do_run(
                         True,
                     )
                 return True, "计划已生成，等待澄清问题回答", True
+
+            except ReActNeedsReorchestrate as e:
+                # 无效迭代/建议重新编排：调用 PlannerOrchestrator.reorchestrate 并返回用户说明
+                from agent.react.iteration_controller import REORCHESTRATE_PREFIX
+                from agent.planner.orchestrator import PlannerOrchestrator
+
+                failure_summary = (e.message or "").replace(REORCHESTRATE_PREFIX, "").strip()
+                orchestrator = PlannerOrchestrator(
+                    backend=backend,
+                    api_key=api_key,
+                    base_url=base_url,
+                    ollama_url=ollama_url,
+                    model=model,
+                )
+                try:
+                    _task_plan, _ctx, _serial_plan, user_message = orchestrator.reorchestrate(
+                        user_input, failure_summary, context=memory_context
+                    )
+                except Exception as orch_e:
+                    logger.warning("重新编排失败: %s", orch_e)
+                    user_message = "执行遇到问题，建议重新编排任务；重新编排调用失败: " + str(orch_e)
+                context_manager.add_conversation(
+                    user_input=user_input,
+                    plan={"architecture": "react", "status": "reorchestrate"},
+                    model_path="",
+                    success=True,
+                )
+                if conversation_id:
+                    _update_memory_after_run(
+                        conversation_id,
+                        user_input,
+                        user_message,
+                        True,
+                    )
+                return True, user_message, True
 
             context_manager.add_conversation(
                 user_input=user_input,
@@ -184,6 +233,41 @@ def do_run(
         return False, str(e), False
 
 
+def do_plan_mode(
+    user_input: str,
+    conversation_id: Optional[str] = None,
+    backend: Optional[str] = None,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    ollama_url: Optional[str] = None,
+    model: Optional[str] = None,
+    verbose: bool = False,
+) -> Tuple[bool, str, Optional[Dict[str, Any]], bool]:
+    """
+    Plan 模式：多轮交互式形成 plan.json，满意后返回 should_enter_core=True 与 plan_dict。
+    返回 (ok, reply_text, plan_dict, should_enter_core)。
+    """
+    _ensure_logging(verbose)
+    try:
+        context_manager = get_context_manager(conversation_id)
+        from agent.run.plan_mode import PlanModeHandler
+
+        handler = PlanModeHandler(
+            context_manager=context_manager,
+            get_agent=get_agent,
+            backend=backend,
+            api_key=api_key,
+            base_url=base_url,
+            ollama_url=ollama_url,
+            model=model,
+        )
+        reply, plan_dict, should_enter_core = handler.process(user_input)
+        return True, reply, plan_dict, should_enter_core
+    except Exception as e:
+        logger.exception("do_plan_mode 失败: %s", e)
+        return False, str(e), None, False
+
+
 def do_plan(
     user_input: str,
     output_path: Optional[Path] = None,
@@ -208,18 +292,13 @@ def do_plan(
 def do_exec_from_file(
     plan_file: Path,
     output: Optional[str] = None,
-    code_only: bool = False,
     verbose: bool = False,
 ) -> Tuple[bool, str]:
-    """根据 JSON 计划文件执行：创建模型或仅生成代码。"""
+    """根据 JSON 计划文件执行：创建模型。"""
     _ensure_logging(verbose)
     try:
         plan_data = json.loads(plan_file.read_text(encoding="utf-8"))
         plan = GeometryPlan.from_dict(plan_data)
-        if code_only:
-            generator = JavaGenerator()
-            code = generator.generate_from_plan(plan, output)
-            return True, code
         runner = COMSOLRunner()
         model_path = runner.create_model_from_plan(plan, output)
         return True, f"模型已生成: {model_path}"

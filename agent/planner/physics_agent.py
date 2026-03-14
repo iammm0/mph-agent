@@ -1,23 +1,26 @@
 """物理场建模 Planner Agent — 支持扩展物理场类型与边界/域/初始条件"""
+
 import json
 import re
-from typing import Optional
+from typing import Literal, Optional, cast
 
-from agent.utils.llm import LLMClient
-from agent.utils.prompt_loader import prompt_loader
 from agent.skills import get_skill_injector
-from agent.utils.logger import get_logger
 from agent.utils.config import get_settings
+from agent.utils.llm import LLMClient
+from agent.utils.logger import get_logger
+from agent.utils.prompt_loader import prompt_loader
 from schemas.physics import (
-    PhysicsPlan, PhysicsField, BoundaryCondition, DomainCondition, InitialCondition,
+    BoundaryCondition,
     CouplingDefinition,
+    DomainCondition,
+    InitialCondition,
+    PhysicsField,
+    PhysicsPlan,
 )
 
 logger = get_logger(__name__)
 
-DEFAULT_PHYSICS_PLAN = PhysicsPlan(
-    fields=[PhysicsField(type="heat", parameters={})]
-)
+DEFAULT_PHYSICS_PLAN = PhysicsPlan(fields=[PhysicsField(type="heat", parameters={})])
 
 PHYSICS_TYPE_TO_COMSOL_TAG = {
     "heat": "HeatTransfer",
@@ -38,13 +41,21 @@ class PhysicsAgent:
 
     def __init__(self, api_key: Optional[str] = None, backend: Optional[str] = None, **kwargs):
         settings = get_settings()
-        b = backend or settings.llm_backend
+        b = cast(
+            Literal["deepseek", "kimi", "ollama", "openai-compatible"],
+            backend or settings.llm_backend,
+        )
         key = api_key or settings.get_api_key_for_backend(b)
+        # 避免 kwargs 与显式参数重复导致 LLMClient(base_url=...) got multiple values
+        base_url = kwargs.pop("base_url", None) or settings.get_base_url_for_backend(b)
+        ollama_url = kwargs.pop("ollama_url", None) or settings.ollama_url
+        model = kwargs.pop("model", None) or settings.get_model_for_backend(b)
         self.llm = LLMClient(
             backend=b,
             api_key=key,
-            base_url=settings.get_base_url_for_backend(b),
-            **kwargs,
+            base_url=base_url,
+            ollama_url=ollama_url,
+            model=model,
         )
 
     def _extract_json_from_response(self, response_text: str) -> dict:
@@ -72,18 +83,9 @@ class PhysicsAgent:
         if t not in ALLOWED_TYPES:
             t = "heat"
 
-        bcs = [
-            BoundaryCondition(**bc)
-            for bc in raw.get("boundary_conditions", [])
-        ]
-        dcs = [
-            DomainCondition(**dc)
-            for dc in raw.get("domain_conditions", [])
-        ]
-        ics = [
-            InitialCondition(**ic)
-            for ic in raw.get("initial_conditions", [])
-        ]
+        bcs = [BoundaryCondition(**bc) for bc in raw.get("boundary_conditions", [])]
+        dcs = [DomainCondition(**dc) for dc in raw.get("domain_conditions", [])]
+        ics = [InitialCondition(**ic) for ic in raw.get("initial_conditions", [])]
 
         return PhysicsField(
             type=t,
@@ -120,13 +122,12 @@ class PhysicsAgent:
 
             field_list = [self._build_field(f) for f in fields_raw]
 
-            couplings = [
-                CouplingDefinition(**c)
-                for c in json_data.get("couplings", [])
-            ]
+            couplings = [CouplingDefinition(**c) for c in json_data.get("couplings", [])]
 
             plan = PhysicsPlan(fields=field_list, couplings=couplings)
-            logger.info("物理场解析成功: %s 个物理场, %s 个耦合", len(plan.fields), len(plan.couplings))
+            logger.info(
+                "物理场解析成功: %s 个物理场, %s 个耦合", len(plan.fields), len(plan.couplings)
+            )
             return plan
         except Exception as e:
             logger.warning("物理场 LLM 解析失败，使用默认传热: %s", e)

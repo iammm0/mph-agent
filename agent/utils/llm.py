@@ -1,6 +1,7 @@
 """LLM 工具函数 - 仅支持 DeepSeek、Kimi、Ollama 及符合 OpenAI 规范的中转 API"""
-from typing import Optional, Literal, Callable
+
 from abc import ABC, abstractmethod
+from typing import Callable, Literal, Optional
 
 from agent.utils.logger import get_logger
 
@@ -29,7 +30,9 @@ class LLMBackend(ABC):
         return self.call(prompt, model, temperature, max_retries)
 
 
-def _openai_chat(client, prompt: str, model: str, temperature: float, max_retries: int, backend_name: str) -> str:
+def _openai_chat(
+    client, prompt: str, model: str, temperature: float, max_retries: int, backend_name: str
+) -> str:
     """通用 OpenAI 风格 chat 调用"""
     for attempt in range(max_retries):
         try:
@@ -91,11 +94,13 @@ def _openai_chat_stream(
                 logger.info(f"{backend_name} 使用已收到的部分响应 ({len(collected)} 字符)")
                 return collected
             if attempt < max_retries - 1:
-                wait = min(2 ** attempt, 8)
+                wait = min(2**attempt, 8)
                 logger.info(f"{backend_name} {wait}s 后重试...")
                 time.sleep(wait)
 
-    raise ValueError(f"{backend_name} 流式调用失败 (重试 {max_retries} 次): {last_err}") from last_err
+    raise ValueError(
+        f"{backend_name} 流式调用失败 (重试 {max_retries} 次): {last_err}"
+    ) from last_err
 
 
 class DeepSeekBackend(LLMBackend):
@@ -103,18 +108,34 @@ class DeepSeekBackend(LLMBackend):
 
     def __init__(self, api_key: str):
         try:
-            from openai import OpenAI
+            from openai import OpenAI  # type: ignore[import-not-found]
+
             self.client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
         except ImportError:
             raise ImportError("openai 未安装，请运行: pip install openai")
 
-    def call(self, prompt: str, model: str = "deepseek-reasoner", temperature: float = 0.1, max_retries: int = 3) -> str:
+    def call(
+        self,
+        prompt: str,
+        model: str = "deepseek-reasoner",
+        temperature: float = 0.1,
+        max_retries: int = 3,
+    ) -> str:
         return _openai_chat(self.client, prompt, model, temperature, max_retries, "DeepSeek")
 
-    def call_stream(self, prompt: str, model: str = "deepseek-reasoner", temperature: float = 0.1, max_retries: int = 3, on_chunk: Optional[Callable[[str], None]] = None) -> str:
+    def call_stream(
+        self,
+        prompt: str,
+        model: str = "deepseek-reasoner",
+        temperature: float = 0.1,
+        max_retries: int = 3,
+        on_chunk: Optional[Callable[[str], None]] = None,
+    ) -> str:
         if not on_chunk:
             return self.call(prompt, model, temperature, max_retries)
-        return _openai_chat_stream(self.client, prompt, model, temperature, on_chunk, "DeepSeek", max_retries=max_retries)
+        return _openai_chat_stream(
+            self.client, prompt, model, temperature, on_chunk, "DeepSeek", max_retries=max_retries
+        )
 
 
 class KimiBackend(LLMBackend):
@@ -122,18 +143,34 @@ class KimiBackend(LLMBackend):
 
     def __init__(self, api_key: str):
         try:
-            from openai import OpenAI
+            from openai import OpenAI  # type: ignore[import-not-found]
+
             self.client = OpenAI(api_key=api_key, base_url="https://api.moonshot.ai/v1")
         except ImportError:
             raise ImportError("openai 未安装，请运行: pip install openai")
 
-    def call(self, prompt: str, model: str = "moonshot-v1-8k", temperature: float = 0.1, max_retries: int = 3) -> str:
+    def call(
+        self,
+        prompt: str,
+        model: str = "moonshot-v1-8k",
+        temperature: float = 0.1,
+        max_retries: int = 3,
+    ) -> str:
         return _openai_chat(self.client, prompt, model, temperature, max_retries, "Kimi")
 
-    def call_stream(self, prompt: str, model: str = "moonshot-v1-8k", temperature: float = 0.1, max_retries: int = 3, on_chunk: Optional[Callable[[str], None]] = None) -> str:
+    def call_stream(
+        self,
+        prompt: str,
+        model: str = "moonshot-v1-8k",
+        temperature: float = 0.1,
+        max_retries: int = 3,
+        on_chunk: Optional[Callable[[str], None]] = None,
+    ) -> str:
         if not on_chunk:
             return self.call(prompt, model, temperature, max_retries)
-        return _openai_chat_stream(self.client, prompt, model, temperature, on_chunk, "Kimi", max_retries=max_retries)
+        return _openai_chat_stream(
+            self.client, prompt, model, temperature, on_chunk, "Kimi", max_retries=max_retries
+        )
 
 
 class OpenAICompatibleBackend(LLMBackend):
@@ -141,70 +178,89 @@ class OpenAICompatibleBackend(LLMBackend):
 
     def __init__(self, api_key: str, base_url: str):
         try:
-            from openai import OpenAI
+            from openai import OpenAI  # type: ignore[import-not-found]
+
             self.client = OpenAI(api_key=api_key, base_url=base_url)
         except ImportError:
             raise ImportError("openai 未安装，请运行: pip install openai")
         self.base_url = base_url
         logger.info(f"使用 OpenAI 兼容中转 API: {base_url}")
 
-    def call(self, prompt: str, model: str = "gpt-3.5-turbo", temperature: float = 0.1, max_retries: int = 3) -> str:
+    def call(
+        self,
+        prompt: str,
+        model: str = "gpt-3.5-turbo",
+        temperature: float = 0.1,
+        max_retries: int = 3,
+    ) -> str:
         return _openai_chat(self.client, prompt, model, temperature, max_retries, "OpenAI兼容")
 
-    def call_stream(self, prompt: str, model: str = "gpt-3.5-turbo", temperature: float = 0.1, max_retries: int = 3, on_chunk: Optional[Callable[[str], None]] = None) -> str:
+    def call_stream(
+        self,
+        prompt: str,
+        model: str = "gpt-3.5-turbo",
+        temperature: float = 0.1,
+        max_retries: int = 3,
+        on_chunk: Optional[Callable[[str], None]] = None,
+    ) -> str:
         if not on_chunk:
             return self.call(prompt, model, temperature, max_retries)
-        return _openai_chat_stream(self.client, prompt, model, temperature, on_chunk, "OpenAI兼容", max_retries=max_retries)
+        return _openai_chat_stream(
+            self.client, prompt, model, temperature, on_chunk, "OpenAI兼容", max_retries=max_retries
+        )
 
 
 class OllamaBackend(LLMBackend):
     """Ollama 后端（支持本地和远程）"""
-    
+
     def __init__(self, base_url: str = "http://localhost:11434"):
         """
         初始化 Ollama 后端
-        
+
         Args:
             base_url: Ollama 服务地址，默认本地 http://localhost:11434
         """
-        self.base_url = base_url.rstrip('/')
+        self.base_url = base_url.rstrip("/")
         try:
-            import requests
+            import requests  # type: ignore[import-not-found]
+
             self.requests = requests
         except ImportError:
             raise ImportError("requests 未安装，请运行: pip install requests")
-    
-    def call(self, prompt: str, model: str = "llama3", temperature: float = 0.1, max_retries: int = 3) -> str:
+
+    def call(
+        self, prompt: str, model: str = "llama3", temperature: float = 0.1, max_retries: int = 3
+    ) -> str:
         """调用 Ollama API"""
         api_url = f"{self.base_url}/api/generate"
-        
+
         for attempt in range(max_retries):
             try:
                 logger.debug(f"调用 Ollama API (尝试 {attempt + 1}/{max_retries})")
                 logger.debug(f"Ollama 服务地址: {self.base_url}, 模型: {model}")
-                
+
                 payload = {
                     "model": model,
                     "prompt": prompt,
                     "stream": False,
                     "options": {
                         "temperature": temperature,
-                    }
+                    },
                 }
-                
+
                 response = self.requests.post(api_url, json=payload, timeout=120)
                 response.raise_for_status()
-                
+
                 result = response.json()
                 response_text = result.get("response", "")
-                
+
                 if not response_text:
                     raise ValueError("Ollama API 返回空响应")
-                
+
                 logger.debug(f"Ollama 响应长度: {len(response_text)} 字符")
-                
+
                 return response_text
-                
+
             except self.requests.exceptions.ConnectionError as e:
                 error_msg = f"无法连接到 Ollama 服务 ({self.base_url})，请确保 Ollama 正在运行"
                 logger.warning(f"第 {attempt + 1} 次调用失败: {error_msg}")
@@ -214,9 +270,9 @@ class OllamaBackend(LLMBackend):
                 logger.warning(f"第 {attempt + 1} 次调用失败: {e}")
                 if attempt == max_retries - 1:
                     raise ValueError(f"Ollama API 调用失败: {e}") from e
-        
+
         raise ValueError("Ollama API 调用失败，已达到最大重试次数")
-    
+
     def call_stream(
         self,
         prompt: str,
@@ -231,7 +287,12 @@ class OllamaBackend(LLMBackend):
         full = []
         for attempt in range(max_retries):
             try:
-                payload = {"model": model, "prompt": prompt, "stream": True, "options": {"temperature": temperature}}
+                payload = {
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": True,
+                    "options": {"temperature": temperature},
+                }
                 resp = self.requests.post(api_url, json=payload, timeout=120, stream=True)
                 resp.raise_for_status()
                 for line in resp.iter_lines(decode_unicode=True):
@@ -253,7 +314,7 @@ class OllamaBackend(LLMBackend):
                 if attempt == max_retries - 1:
                     raise ValueError(f"Ollama 流式调用失败: {e}") from e
         return "".join(full)
-    
+
     def list_models(self) -> list:
         """列出可用的模型"""
         try:
@@ -276,7 +337,7 @@ class LLMClient:
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         ollama_url: Optional[str] = None,
-        model: Optional[str] = None
+        model: Optional[str] = None,
     ):
         """
         初始化 LLM 客户端
@@ -315,20 +376,26 @@ class LLMClient:
             raise ValueError(f"不支持的后端: {backend}，支持: {', '.join(_SUPPORTED_BACKENDS)}")
 
         logger.info(f"LLM 客户端已初始化: {backend}, 模型: {self.default_model}")
-    
-    def call(self, prompt: str, model: Optional[str] = None, temperature: float = 0.1, max_retries: int = 3) -> str:
+
+    def call(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        temperature: float = 0.1,
+        max_retries: int = 3,
+    ) -> str:
         """
         调用 LLM API
-        
+
         Args:
             prompt: 输入提示
             model: 模型名称（可选，使用初始化时的默认值）
             temperature: 温度参数
             max_retries: 最大重试次数
-        
+
         Returns:
             LLM 响应文本
-        
+
         Raises:
             ValueError: API 调用失败
         """

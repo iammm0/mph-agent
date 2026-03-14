@@ -1,21 +1,20 @@
 """研究类型 Planner Agent"""
+
 import json
 import re
-from typing import Optional
+from typing import Literal, Optional, cast
 
-from agent.utils.llm import LLMClient
-from agent.utils.prompt_loader import prompt_loader
 from agent.skills import get_skill_injector
-from agent.utils.logger import get_logger
 from agent.utils.config import get_settings
+from agent.utils.llm import LLMClient
+from agent.utils.logger import get_logger
+from agent.utils.prompt_loader import prompt_loader
 from schemas.study import StudyPlan, StudyType
 
 logger = get_logger(__name__)
 
 # 默认研究计划：稳态
-DEFAULT_STUDY_PLAN = StudyPlan(
-    studies=[StudyType(type="stationary", parameters={})]
-)
+DEFAULT_STUDY_PLAN = StudyPlan(studies=[StudyType(type="stationary", parameters={})])
 
 ALLOWED_STUDY_TYPES = {"stationary", "time_dependent", "eigenvalue", "frequency"}
 
@@ -25,13 +24,21 @@ class StudyAgent:
 
     def __init__(self, api_key: Optional[str] = None, backend: Optional[str] = None, **kwargs):
         settings = get_settings()
-        b = backend or settings.llm_backend
+        b = cast(
+            Literal["deepseek", "kimi", "ollama", "openai-compatible"],
+            backend or settings.llm_backend,
+        )
         key = api_key or settings.get_api_key_for_backend(b)
+        # 避免 kwargs 与显式参数重复导致 LLMClient(base_url=...) got multiple values
+        base_url = kwargs.pop("base_url", None) or settings.get_base_url_for_backend(b)
+        ollama_url = kwargs.pop("ollama_url", None) or settings.ollama_url
+        model = kwargs.pop("model", None) or settings.get_model_for_backend(b)
         self.llm = LLMClient(
             backend=b,
             api_key=key,
-            base_url=settings.get_base_url_for_backend(b),
-            **kwargs
+            base_url=base_url,
+            ollama_url=ollama_url,
+            model=model,
         )
 
     def _extract_json_from_response(self, response_text: str) -> dict:
@@ -84,10 +91,12 @@ class StudyAgent:
             study_list = []
             for s in studies_data:
                 t = s.get("type", "stationary")
-                study_list.append(StudyType(
-                    type=t if t in ALLOWED_STUDY_TYPES else "stationary",
-                    parameters=s.get("parameters", {})
-                ))
+                study_list.append(
+                    StudyType(
+                        type=t if t in ALLOWED_STUDY_TYPES else "stationary",
+                        parameters=s.get("parameters", {}),
+                    )
+                )
             plan = StudyPlan(studies=study_list)
             logger.info("研究解析成功: %s 个研究", len(plan.studies))
             return plan

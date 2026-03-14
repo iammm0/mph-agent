@@ -1,6 +1,6 @@
 """
 Agent 模块 - 按子包组织：
-- core: 基类、事件、路由、会话、依赖注入、Celery
+- core: 基类、事件、路由、会话、依赖注入
 - planner: 规划（几何/材料/物理/研究）
 - react: ReAct 执行
 - executor: COMSOL 运行与 Java API

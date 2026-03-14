@@ -1,16 +1,17 @@
 """推理引擎"""
+
 import json
 import re
-from typing import Dict, Any, Optional, List
+import traceback
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
-from typing import TYPE_CHECKING
-from agent.utils.llm import LLMClient
-from agent.utils.prompt_loader import prompt_loader
-from agent.skills import get_skill_injector
-from agent.utils.logger import get_logger
 from agent.core.events import EventBus, EventType
-from schemas.task import ReActTaskPlan, ExecutionStep, ReasoningCheckpoint, ClarifyingAnswer
+from agent.skills import get_skill_injector
+from agent.utils.llm import LLMClient
+from agent.utils.logger import get_logger
+from agent.utils.prompt_loader import prompt_loader
+from schemas.task import ClarifyingAnswer, ExecutionStep, ReActTaskPlan, ReasoningCheckpoint
 
 if TYPE_CHECKING:
     from schemas.task import TaskPlan
@@ -18,7 +19,15 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # 用户说「只建几何」「只创建几何」等时，若 LLM 未设定 stop_after_step，用此处推断的步骤截断，避免默认走完整流程
-_GEOMETRY_ONLY_PHRASES = ("只建几何", "只创建几何", "仅几何", "只画几何", "就建几何", "建几何就行", "只要几何")
+_GEOMETRY_ONLY_PHRASES = (
+    "只建几何",
+    "只创建几何",
+    "仅几何",
+    "只画几何",
+    "就建几何",
+    "建几何就行",
+    "只要几何",
+)
 _MATERIAL_STOP_PHRASES = ("加完材料就行", "只加材料", "材料加完就停", "赋完材料就结束")
 _PHYSICS_STOP_PHRASES = ("加完物理场就行", "加完物理场就停", "只加物理场", "物理场加完就结束")
 _MESH_STOP_PHRASES = ("划分完网格就停", "划分网格就停", "网格划完就结束", "只划分网格")
@@ -81,13 +90,30 @@ def _task_plan_to_execution_path(task_plan: "TaskPlan") -> List[ExecutionStep]:
                 status="pending",
             )
         )
-    # 仅当有物理场或研究时才需要网格、研究、求解（COMSOL 逻辑：不先完成几何和材料不能加物理场；不加物理场则不需要网格与求解）
+    # 当有网格计划或需要求解（物理场/研究）时加入网格步；若有 task_plan.mesh 则把规划参数带入
+    mesh_plan = getattr(task_plan, "mesh", None)
+    need_mesh = bool(mesh_plan or task_plan.physics or getattr(task_plan, "study", None))
+    if need_mesh:
+        idx += 1
+        mesh_params = {}
+        if mesh_plan:
+            mesh_params = {
+                "element_size": getattr(mesh_plan, "element_size", None),
+                "sequence": getattr(mesh_plan, "sequence", "free"),
+                "quality": getattr(mesh_plan, "quality", "normal"),
+                "parameters": getattr(mesh_plan, "parameters", {}),
+            }
+        steps.append(
+            ExecutionStep(
+                step_id=f"step_{idx}",
+                step_type="mesh",
+                action="generate_mesh",
+                parameters=mesh_params,
+                status="pending",
+            )
+        )
     need_solve = bool(task_plan.physics or getattr(task_plan, "study", None))
     if need_solve:
-        idx += 1
-        steps.append(
-            ExecutionStep(step_id=f"step_{idx}", step_type="mesh", action="generate_mesh", parameters={}, status="pending")
-        )
         idx += 1
         steps.append(
             ExecutionStep(
@@ -100,7 +126,13 @@ def _task_plan_to_execution_path(task_plan: "TaskPlan") -> List[ExecutionStep]:
         )
         idx += 1
         steps.append(
-            ExecutionStep(step_id=f"step_{idx}", step_type="solve", action="solve", parameters={}, status="pending")
+            ExecutionStep(
+                step_id=f"step_{idx}",
+                step_type="solve",
+                action="solve",
+                parameters={},
+                status="pending",
+            )
         )
     return steps
 
@@ -138,7 +170,7 @@ class ReasoningEngine:
             "ollama_url": ollama_url,
             "model": model,
         }
-    
+
     def understand_and_plan(
         self,
         user_input: str,
@@ -159,6 +191,7 @@ class ReasoningEngine:
         if self._use_planner_orchestrator:
             try:
                 from agent.planner.orchestrator import PlannerOrchestrator
+
                 kw = {k: v for k, v in self._llm_kwargs.items() if v is not None}
                 orchestrator = PlannerOrchestrator(**kw)
                 # 将 clarifying_answers 注入到 Planner 层：在已有上下文前追加一段「澄清答案摘要」
@@ -192,22 +225,31 @@ class ReasoningEngine:
                 plan.geometry_plan = task_plan.geometry
                 plan.material_plan = task_plan.material
                 plan.physics_plan = getattr(task_plan, "physics", None)
+                plan.mesh_plan = getattr(task_plan, "mesh", None)
                 plan.study_plan = getattr(task_plan, "study", None)
                 # 首次调用：Planner 可能会给出 clarifying_questions；二次调用（带 clarifying_answers）时按约定应为空
                 serial_cq = getattr(serial_plan, "clarifying_questions", None)
                 if clarifying_answers:
                     if serial_cq:
-                        logger.warning("二次调用带 clarifying_answers 仍返回 clarifying_questions，已忽略")
+                        logger.warning(
+                            "二次调用带 clarifying_answers 仍返回 clarifying_questions，已忽略"
+                        )
                     plan.clarifying_questions = None
                     plan.clarifying_answers = clarifying_answers
                 else:
                     plan.clarifying_questions = serial_cq
                     plan.clarifying_answers = None
-                plan.case_library_suggestions = getattr(serial_plan, "case_library_suggestions", None)
+                plan.case_library_suggestions = getattr(
+                    serial_plan, "case_library_suggestions", None
+                )
                 logger.info("规划完成（编排器）: {} 个执行步骤", len(execution_path))
                 return plan
             except Exception as e:
-                logger.warning("Planner 编排器执行失败，回退到 LLM 单次规划: {}", e)
+                logger.error(
+                    "Planner 编排器执行失败，回退到 LLM 单次规划: %s\n%s",
+                    e,
+                    traceback.format_exc(),
+                )
 
         # 使用 LLM 理解需求（可注入记忆上下文）
         understanding = self.understand_requirement(user_input, memory_context=memory_context)
@@ -227,7 +269,9 @@ class ReasoningEngine:
         reasoning_path = self.plan_reasoning_path(execution_path)
 
         # 具体规划说明（用于展示）
-        plan_description = understanding.get("plan_description") or understanding.get("reasoning") or ""
+        plan_description = (
+            understanding.get("plan_description") or understanding.get("reasoning") or ""
+        )
         stop_after_step = understanding.get("stop_after_step") or "solve"
 
         # 创建任务计划
@@ -243,12 +287,14 @@ class ReasoningEngine:
         )
         plan.clarifying_questions = understanding.get("clarifying_questions")
         plan.case_library_suggestions = understanding.get("case_library_suggestions")
-        
+
         logger.info(f"规划完成: {len(execution_path)} 个执行步骤, {len(reasoning_path)} 个检查点")
-        
+
         return plan
-    
-    def understand_requirement(self, user_input: str, memory_context: Optional[str] = None) -> Dict[str, Any]:
+
+    def understand_requirement(
+        self, user_input: str, memory_context: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         理解用户需求
 
@@ -277,21 +323,27 @@ class ReasoningEngine:
 """
         prompt = get_skill_injector().inject_into_prompt(user_input, prompt)
         if self._event_bus:
-            def on_chunk(chunk: str):
-                if chunk:
-                    self._event_bus.emit_type(EventType.LLM_STREAM_CHUNK, {"phase": "planning", "chunk": chunk})
+
+            def on_chunk(chunk: str) -> None:
+                if chunk and self._event_bus is not None:
+                    self._event_bus.emit_type(
+                        EventType.LLM_STREAM_CHUNK, {"phase": "planning", "chunk": chunk}
+                    )
+
+            stream_callback: Callable[[str], None] = on_chunk
+
             try:
-                response = self.llm.call_stream(prompt, temperature=0.1, on_chunk=on_chunk)
+                response = self.llm.call_stream(prompt, temperature=0.1, on_chunk=stream_callback)
             except Exception:
                 response = self.llm.call(prompt, temperature=0.1)
         else:
             response = self.llm.call(prompt, temperature=0.1)
-        
+
         # 提取 JSON
         understanding = self._extract_json(response)
-        
+
         return understanding
-    
+
     def plan_execution_path(self, understanding: Dict[str, Any]) -> List[ExecutionStep]:
         """
         规划执行链路，每个步骤携带该步的具体参数（geometry_input / material_input / physics_input 等），
@@ -310,17 +362,30 @@ class ReasoningEngine:
             elif task_type == "physics":
                 required_steps = ["create_geometry", "add_material", "add_physics"]
             elif task_type == "study":
-                required_steps = ["create_geometry", "add_material", "add_physics", "configure_study"]
+                required_steps = [
+                    "create_geometry",
+                    "add_material",
+                    "add_physics",
+                    "configure_study",
+                ]
             else:
                 required_steps = [
-                    "create_geometry", "add_material", "add_physics",
-                    "generate_mesh", "configure_study", "solve",
+                    "create_geometry",
+                    "add_material",
+                    "add_physics",
+                    "generate_mesh",
+                    "configure_study",
+                    "solve",
                 ]
 
         # 按 stop_after_step 截断：只执行到该步（含）即保存模型并结束
         step_order = [
-            "create_geometry", "add_material", "add_physics",
-            "generate_mesh", "configure_study", "solve",
+            "create_geometry",
+            "add_material",
+            "add_physics",
+            "generate_mesh",
+            "configure_study",
+            "solve",
         ]
         if stop_after_step and stop_after_step in step_order:
             idx = step_order.index(stop_after_step)
@@ -330,6 +395,7 @@ class ReasoningEngine:
         step_type_map = {
             "create_geometry": "geometry",
             "add_material": "material",
+            "update_material_property": "material",
             "add_physics": "physics",
             "generate_mesh": "mesh",
             "configure_study": "study",
@@ -344,13 +410,31 @@ class ReasoningEngine:
         step_parameters_map = {
             "create_geometry": {"geometry_input": params.get("geometry_input", "")},
             "add_material": {"material_input": params.get("material_input", "")},
+            "update_material_property": {
+                "material_name": params.get("material_name"),
+                "material_names": params.get("material_names"),
+                "properties": params.get("properties", {"k": 50}),
+                "property_group": params.get("property_group", "Def"),
+            },
             "add_physics": {"physics_input": params.get("physics_input", "")},
             "generate_mesh": {"mesh": params.get("mesh", {})},
             "configure_study": {"study_input": params.get("study_input", "")},
             "solve": {},
-            "import_geometry": {"file_path": params.get("file_path"), "geom_tag": params.get("geom_tag", "geom1")},
-            "create_selection": {"tag": params.get("tag", "sel1"), "geom_tag": params.get("geom_tag", "geom1"), "entities": params.get("entities"), "all": params.get("all")},
-            "export_results": {"out_path": params.get("out_path"), "plot_group_tag": params.get("plot_group_tag"), "export_type": params.get("export_type")},
+            "import_geometry": {
+                "file_path": params.get("file_path"),
+                "geom_tag": params.get("geom_tag", "geom1"),
+            },
+            "create_selection": {
+                "tag": params.get("tag", "sel1"),
+                "geom_tag": params.get("geom_tag", "geom1"),
+                "entities": params.get("entities"),
+                "all": params.get("all"),
+            },
+            "export_results": {
+                "out_path": params.get("out_path"),
+                "plot_group_tag": params.get("plot_group_tag"),
+                "export_type": params.get("export_type"),
+            },
             # 高级：直接调度已集成的官方 Java API
             # - method + args + target_path → invoke_official_api
             # - wrapper/wrapper_name → 调用 api_* 包装函数
@@ -366,30 +450,35 @@ class ReasoningEngine:
             step_type = step_type_map.get(step_action, "geometry")
             step_params = step_parameters_map.get(step_action, {})
             if not step_params and params:
-                step_params = {k: v for k, v in params.items() if k in ("geometry_input", "material_input", "physics_input", "mesh", "study_input")}
+                step_params = {
+                    k: v
+                    for k, v in params.items()
+                    if k
+                    in ("geometry_input", "material_input", "physics_input", "mesh", "study_input")
+                }
             step = ExecutionStep(
-                step_id=f"step_{i+1}",
+                step_id=f"step_{i + 1}",
                 step_type=step_type,
                 action=step_action,
                 parameters=step_params if step_params else params,
-                status="pending"
+                status="pending",
             )
             steps.append(step)
 
         return steps
-    
+
     def plan_reasoning_path(self, execution_path: List[ExecutionStep]) -> List[ReasoningCheckpoint]:
         """
         规划推理链路（验证点、检查点）
-        
+
         Args:
             execution_path: 执行步骤列表
-        
+
         Returns:
             推理检查点列表
         """
         checkpoints = []
-        
+
         # 为每个执行步骤创建检查点
         for step in execution_path:
             checkpoint = ReasoningCheckpoint(
@@ -397,121 +486,150 @@ class ReasoningEngine:
                 checkpoint_type="validation",
                 description=f"验证 {step.action} 步骤",
                 criteria={"step_id": step.step_id},
-                status="pending"
+                status="pending",
             )
             checkpoints.append(checkpoint)
-        
+
         # 添加整体验证检查点
         overall_checkpoint = ReasoningCheckpoint(
             checkpoint_id="checkpoint_overall",
             checkpoint_type="verification",
             description="整体模型验证",
             criteria={"all_steps_complete": True},
-            status="pending"
+            status="pending",
         )
         checkpoints.append(overall_checkpoint)
-        
+
         return checkpoints
-    
+
     def reason(self, plan: ReActTaskPlan) -> Dict[str, Any]:
         """
         推理当前状态，决定下一步行动
-        
+
         Args:
             plan: 当前任务计划
-        
+
         Returns:
             思考结果
         """
         current_step = plan.get_current_step()
-        
+
+        # 执行链路为空时，不能判定完成（避免 all([]) 为 True 导致假完成）
+        if not plan.execution_path:
+            return {"action": "replan", "reasoning": "执行路径为空，需要重新规划", "parameters": {}}
+
         # 如果所有步骤都已完成
-        if all(step.status == "completed" for step in plan.execution_path):
-            return {
-                "action": "complete",
-                "reasoning": "所有步骤已完成",
-                "parameters": {}
-            }
-        
-        # 如果有失败的步骤
+        if all(step.status in ("completed", "warning", "skipped") for step in plan.execution_path):
+            return {"action": "complete", "reasoning": "所有步骤已完成", "parameters": {}}
+
+        # 如果有失败的步骤，优先让当前失败步骤回到 pending 重试，避免输出无法被 act 消费的控制动作
         failed_steps = [step for step in plan.execution_path if step.status == "failed"]
         if failed_steps:
-            # 尝试修复或跳过
+            target = None
+            if current_step and current_step.status == "failed":
+                target = current_step
+            else:
+                target = failed_steps[0]
+
+            target.status = "pending"
+            try:
+                idx = plan.execution_path.index(target)
+                plan.current_step_index = idx
+            except ValueError:
+                pass
+
             return {
-                "action": "retry" if len(failed_steps) == 1 else "skip",
-                "reasoning": f"检测到 {len(failed_steps)} 个失败步骤",
-                "parameters": {"failed_steps": [s.step_id for s in failed_steps]}
+                "action": target.action,
+                "reasoning": f"检测到失败步骤，重试: {target.action}",
+                "parameters": target.parameters,
             }
-        
+
         # 如果有待执行的步骤
         if current_step and current_step.status == "pending":
             return {
                 "action": current_step.action,
                 "reasoning": f"执行步骤: {current_step.action}",
-                "parameters": current_step.parameters
+                "parameters": current_step.parameters,
             }
-        
-        # 默认：继续执行下一步
-        if plan.current_step_index < len(plan.execution_path) - 1:
+
+        # warning 视为可继续（该步已执行但有告警），推进到下一步
+        if current_step and current_step.status in ("warning", "completed", "skipped"):
+            if plan.current_step_index < len(plan.execution_path) - 1:
+                plan.current_step_index += 1
+                next_step = plan.get_current_step()
+                if next_step:
+                    if next_step.status == "failed":
+                        next_step.status = "pending"
+                    return {
+                        "action": next_step.action,
+                        "reasoning": f"继续执行下一步: {next_step.action}",
+                        "parameters": next_step.parameters,
+                    }
+
+        # 默认：继续执行下一步（并跳过已完成/告警/跳过状态的步骤）
+        while plan.current_step_index < len(plan.execution_path) - 1:
             plan.current_step_index += 1
             next_step = plan.get_current_step()
-            if next_step:
-                return {
-                    "action": next_step.action,
-                    "reasoning": f"继续执行下一步: {next_step.action}",
-                    "parameters": next_step.parameters
-                }
-        
-        return {
-            "action": "complete",
-            "reasoning": "没有更多步骤",
-            "parameters": {}
-        }
-    
+            if not next_step:
+                break
+            if next_step.status in ("completed", "warning", "skipped"):
+                continue
+            if next_step.status == "failed":
+                next_step.status = "pending"
+            return {
+                "action": next_step.action,
+                "reasoning": f"继续执行下一步: {next_step.action}",
+                "parameters": next_step.parameters,
+            }
+
+        # 兜底：仅当执行链路非空且都处于可完成状态时才返回 complete
+        if plan.execution_path and all(
+            step.status in ("completed", "warning", "skipped") for step in plan.execution_path
+        ):
+            return {"action": "complete", "reasoning": "没有更多待执行步骤", "parameters": {}}
+
+        return {"action": "replan", "reasoning": "未找到可执行步骤，需重新规划", "parameters": {}}
+
     def validate_plan(self, plan: ReActTaskPlan) -> Dict[str, Any]:
         """
         验证计划的合理性和完整性
-        
+
         Args:
             plan: 任务计划
-        
+
         Returns:
             验证结果
         """
         errors = []
         warnings = []
-        
+
         # 检查执行路径
         if not plan.execution_path:
             errors.append("执行路径为空")
-        
+
         # 检查步骤顺序
         step_types = [step.step_type for step in plan.execution_path]
         if "geometry" not in step_types and ("physics" in step_types or "mesh" in step_types):
             errors.append("几何建模必须在物理场和网格之前")
-        
+
         if "physics" not in step_types and "study" in step_types:
             warnings.append("研究配置通常需要物理场")
-        
-        return {
-            "valid": len(errors) == 0,
-            "errors": errors,
-            "warnings": warnings
-        }
-    
+
+        return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
+
     def refine_plan(self, plan: ReActTaskPlan, feedback: str) -> ReActTaskPlan:
         """
         根据反馈改进计划
-        
+
         Args:
             plan: 当前任务计划
             feedback: 反馈信息
-        
+
         Returns:
             改进后的计划
         """
         logger.info(f"根据反馈改进计划: {feedback}")
-        
+
         # 使用 LLM 分析反馈并生成改进建议
         try:
             prompt = f"""
@@ -531,7 +649,7 @@ class ReasoningEngine:
             prompt = get_skill_injector().inject_into_prompt(feedback, prompt)
             response = self.llm.call(prompt, temperature=0.2)
             suggestions = self._extract_json(response)
-            
+
             # 应用改进建议
             if "new_steps" in suggestions:
                 for step_data in suggestions["new_steps"]:
@@ -540,10 +658,10 @@ class ReasoningEngine:
                         step_type=step_data.get("step_type", "geometry"),
                         action=step_data.get("action", "create_geometry"),
                         parameters=step_data.get("parameters", {}),
-                        status="pending"
+                        status="pending",
                     )
                     plan.execution_path.append(new_step)
-            
+
             # 更新现有步骤
             if "modified_steps" in suggestions:
                 for mod in suggestions["modified_steps"]:
@@ -553,12 +671,12 @@ class ReasoningEngine:
                             if "parameters" in mod:
                                 step.parameters.update(mod["parameters"])
                             break
-            
+
         except Exception as e:
             logger.warning(f"改进计划失败: {e}")
-        
+
         return plan
-    
+
     def _extract_json(self, text: str) -> Dict[str, Any]:
         """从文本中提取 JSON"""
         # 尝试直接解析
@@ -566,23 +684,23 @@ class ReasoningEngine:
             return json.loads(text)
         except json.JSONDecodeError:
             pass
-        
+
         # 尝试提取 JSON 代码块
-        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
         if json_match:
             try:
                 return json.loads(json_match.group(1))
             except json.JSONDecodeError:
                 pass
-        
+
         # 尝试提取第一个 { ... } 块
-        json_match = re.search(r'\{.*\}', text, re.DOTALL)
+        json_match = re.search(r"\{.*\}", text, re.DOTALL)
         if json_match:
             try:
                 return json.loads(json_match.group(0))
             except json.JSONDecodeError:
                 pass
-        
+
         # 如果都失败，返回默认值
         logger.warning("无法从响应中提取 JSON，使用默认值")
         return {"task_type": "geometry", "required_steps": ["create_geometry"], "parameters": {}}

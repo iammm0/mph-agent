@@ -178,7 +178,6 @@ def _handle(req: dict[str, Any]) -> None:
             ok, msg = do_exec_from_file(
                 plan_file=path,
                 output=req.get("output") or None,
-                code_only=req.get("code_only", False),
                 verbose=req.get("verbose", False),
             )
             _reply(ok, msg)

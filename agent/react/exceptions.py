@@ -15,3 +15,14 @@ class PlanNeedsClarification(RuntimeError):
         super().__init__(message)
         self.plan = plan
 
+
+class ReActNeedsReorchestrate(RuntimeError):
+    """
+    当迭代控制器判定为无效迭代或建议重新编排时，ReActAgent 抛出此异常。
+    do_run 捕获后调用 PlannerOrchestrator.reorchestrate() 并返回给用户的可读说明。
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message  # 含 [REORCHESTRATE] 前缀的完整消息
+
