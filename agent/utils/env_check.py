@@ -1,5 +1,5 @@
 """环境检查模块"""
-import os
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Tuple, List
 
@@ -160,10 +160,9 @@ def check_environment() -> EnvCheckResult:
     
     # 5. 检查 Python 依赖（deepseek/kimi/openai-compatible 均使用 openai 客户端）
     if backend in ["deepseek", "kimi", "openai-compatible"]:
-        try:
-            import openai
+        if find_spec("openai") is not None:
             result.add_info("openai 已安装")
-        except ImportError:
+        else:
             result.add_error("openai 未安装，请运行: pip install openai")
     
     try:
@@ -172,10 +171,9 @@ def check_environment() -> EnvCheckResult:
     except ImportError:
         result.add_error("requests 未安装，请运行: pip install requests")
     
-    try:
-        import jpype
+    if find_spec("jpype") is not None:
         result.add_info("jpype1 已安装")
-    except ImportError:
+    else:
         result.add_error("jpype1 未安装，请运行: pip install jpype1")
     
     return result

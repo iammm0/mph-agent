@@ -1,9 +1,7 @@
 """会话编排器：按路由调用 Q&A 或 Planner → Core → Summary，依赖注入 EventBus/Console/get_agent。"""
-from pathlib import Path
 from typing import Optional, Callable, Any
 
 from agent.core.events import EventBus, EventType
-from agent.core.router import route
 from agent.core.dependencies import get_agent, get_event_bus, get_router
 
 

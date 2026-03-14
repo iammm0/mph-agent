@@ -8,7 +8,7 @@ from agent.react.reasoning_engine import ReasoningEngine
 from agent.react.action_executor import ActionExecutor
 from agent.react.observer import Observer
 from agent.react.iteration_controller import IterationController
-from schemas.task import ReActTaskPlan, ExecutionStep, Observation
+from schemas.task import ExecutionStep, Observation
 
 
 class TestReasoningEngine:

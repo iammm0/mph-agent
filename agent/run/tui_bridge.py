@@ -123,7 +123,7 @@ def _handle(req: dict[str, Any]) -> None:
             replied = False
             try:
                 try:
-                    ok, msg = do_run(
+                    ok, msg, plan_needs_clarification = do_run(
                         user_input=(req.get("input") or "").strip(),
                         output=req.get("output") or None,
                         use_react=req.get("use_react", True),
@@ -137,8 +137,9 @@ def _handle(req: dict[str, Any]) -> None:
                         skip_check=req.get("skip_check", False),
                         verbose=req.get("verbose", False),
                         event_bus=event_bus,
+                        clarifying_answers=req.get("clarifying_answers") or None,
                     )
-                    _reply(ok, msg)
+                    _reply(ok, msg, plan_needs_clarification=plan_needs_clarification)
                     replied = True
                 except Exception as e:
                     if _bridge_debug():
@@ -268,6 +269,35 @@ def _handle(req: dict[str, Any]) -> None:
                 _reply(True, "ok", models=models)
             except Exception as e:
                 _reply(False, str(e), models=[])
+            return
+
+        if cmd == "list_apis":
+            query = (req.get("query") or "").strip() or None
+            try:
+                limit = int(req.get("limit") or 200)
+            except Exception:
+                limit = 200
+            try:
+                offset = int(req.get("offset") or 0)
+            except Exception:
+                offset = 0
+            try:
+                ctrl = JavaAPIController()
+                result = ctrl.list_official_api_wrappers(
+                    query=query, limit=limit, offset=offset
+                )
+                ok = result.get("status") == "success"
+                msg = result.get("message", "ok" if ok else "error")
+                _reply(
+                    ok,
+                    msg,
+                    apis=result.get("items", []),
+                    total=result.get("total", 0),
+                    limit=result.get("limit", limit),
+                    offset=result.get("offset", offset),
+                )
+            except Exception as e:
+                _reply(False, str(e), apis=[], total=0, limit=limit, offset=offset)
             return
 
         if cmd == "conversation_delete":

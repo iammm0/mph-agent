@@ -1,8 +1,7 @@
 """配置管理"""
-import os
 import sys
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv

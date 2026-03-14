@@ -77,7 +77,7 @@ class JavaGenerator:
 
         return imports + main_start + shapes_code + operations_code + build_geom + save_model
 
-    def _generate_shape_code(self, shape: GeometryShape, index: int, dim: int) -> str:
+    def _generate_shape_code(self, shape: GeometryShape, index: int, dim: int = 2) -> str:
         name = shape.name or f"{shape.type}{index}"
         x = shape.position.get("x", 0.0)
         y = shape.position.get("y", 0.0)

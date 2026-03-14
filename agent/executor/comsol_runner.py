@@ -3,7 +3,7 @@ import os
 import platform
 import shutil
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Any
 
 from agent.utils.config import get_settings, get_project_root
 from agent.utils.java_runtime import ensure_bundled_java
@@ -157,6 +157,23 @@ class COMSOLRunner:
         ModelUtil = jpype.JClass("com.comsol.model.util.ModelUtil")
         logger.info(f"创建模型: {model_name}")
         return ModelUtil.create(model_name)
+
+    def get_java_class(self, class_name: str):
+        jpype = _jpype()
+        return jpype.JClass(class_name)
+
+    def invoke_static_api(self, class_name: str, method_name: str, *args: Any):
+        java_class = self.get_java_class(class_name)
+        method = getattr(java_class, method_name, None)
+        if method is None:
+            raise AttributeError(f"Java 类 {class_name} 不存在方法 {method_name}")
+        return method(*args)
+
+    def invoke_java_method(self, java_obj: Any, method_name: str, *args: Any):
+        method = getattr(java_obj, method_name, None)
+        if method is None:
+            raise AttributeError(f"对象 {type(java_obj)} 不存在方法 {method_name}")
+        return method(*args)
 
     # ===== 2D Shapes =====
 

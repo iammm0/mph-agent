@@ -1,5 +1,5 @@
 """材料数据结构定义"""
-from typing import Literal, List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union
 from pydantic import BaseModel, Field, field_validator
 
 

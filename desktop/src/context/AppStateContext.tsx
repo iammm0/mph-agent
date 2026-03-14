@@ -14,6 +14,7 @@ import type {
   RunEvent,
   DialogType,
   Conversation,
+  ClarifyingQuestion,
 } from "../lib/types";
 import {
   loadConversations,
@@ -47,6 +48,10 @@ interface AppState {
   /** 编辑并重新建模时预填输入框的内容，设置后 Prompt 会同步到输入框 */
   editingDraft: string | null;
   activeDialog: DialogType;
+  /** 计划模式下，等待用户澄清的问题列表 */
+  pendingPlanQuestions: ClarifyingQuestion[] | null;
+  /** 上一次用于生成 Plan 的原始输入，用于在澄清问题后复用 */
+  lastPlanInput: string | null;
 }
 
 type AppAction =
@@ -77,6 +82,9 @@ type AppAction =
   | { type: "SET_EDITING_DRAFT"; text: string | null }
   | { type: "REMOVE_MESSAGES_FROM_INDEX"; conversationId: string; fromIndex: number }
   | { type: "SET_DIALOG"; dialog: DialogType }
+  | { type: "SET_PLAN_QUESTIONS"; questions: ClarifyingQuestion[] | null }
+  | { type: "CLEAR_PLAN_QUESTIONS" }
+  | { type: "SET_LAST_PLAN_INPUT"; input: string | null }
   | { type: "HYDRATE"; state: Partial<AppState> };
 
 function getInitialState(): AppState {
@@ -106,12 +114,14 @@ function getInitialState(): AppState {
       messagesByConversation: { [first.id]: [] },
       mode: "run",
       backend,
-    outputDefault: null,
-    execCodeOnly: false,
-    busyConversationId: null,
-    editingDraft: null,
-    activeDialog: null,
-  };
+      outputDefault: null,
+      execCodeOnly: false,
+      busyConversationId: null,
+      editingDraft: null,
+      activeDialog: null,
+      pendingPlanQuestions: null,
+      lastPlanInput: null,
+    };
   }
 
   const id = currentId && conversations.some((c: Conversation) => c.id === currentId)
@@ -128,6 +138,8 @@ function getInitialState(): AppState {
     busyConversationId: null,
     editingDraft: null,
     activeDialog: null,
+    pendingPlanQuestions: null,
+    lastPlanInput: null,
   };
 }
 
@@ -266,6 +278,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
     case "SET_DIALOG":
       return { ...state, activeDialog: action.dialog };
+    case "SET_PLAN_QUESTIONS":
+      return { ...state, pendingPlanQuestions: action.questions };
+    case "CLEAR_PLAN_QUESTIONS":
+      return { ...state, pendingPlanQuestions: null };
+    case "SET_LAST_PLAN_INPUT":
+      return { ...state, lastPlanInput: action.input };
     case "HYDRATE":
       return { ...state, ...action.state };
     default:

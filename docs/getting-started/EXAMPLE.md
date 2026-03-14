@@ -2,7 +2,7 @@
 
 本文档说明如何在 TUI 中测试各模块的建模能力。运行前请确保已配置 `.env`（如 `COMSOL_JAR_PATH`、LLM 后端等）；启动 TUI 后输入 `/doctor` 可做环境检查。
 
-- **启动方式**：`uv run mph-agent` 或 `uv run python main.py`
+- **启动方式**：`uv run python cli.py`
 - **已安装分发包**：直接执行 `mph-agent`
 - **模型输出目录**：所有 `.mph` 模型保存到 **mph-agent 根目录下的 `models/`**（可在 TUI 中用 `/output 文件名.mph` 设置默认输出文件名）
 
@@ -11,7 +11,7 @@
 ## 1. 环境与诊断
 
 ```bash
-uv run mph-agent
+uv run python cli.py
 ```
 
 在 TUI 中：

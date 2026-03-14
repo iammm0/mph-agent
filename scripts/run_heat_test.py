@@ -5,16 +5,16 @@ from pathlib import Path
 root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(root))
 
-from dotenv import load_dotenv
-load_dotenv(root / ".env")
-from agent.utils.java_runtime import ensure_java_home_from_venv
-ensure_java_home_from_venv(root)
-
-from agent.core.dependencies import get_agent, get_context_manager
-from agent.utils.env_check import validate_environment
-from agent.utils.logger import setup_logging, get_logger
-
 def main():
+    from dotenv import load_dotenv
+    from agent.utils.java_runtime import ensure_java_home_from_venv
+    from agent.core.dependencies import get_agent, get_context_manager
+    from agent.utils.env_check import validate_environment
+    from agent.utils.logger import setup_logging, get_logger
+
+    load_dotenv(root / ".env")
+    ensure_java_home_from_venv(root)
+
     setup_logging("DEBUG")
     logger = get_logger(__name__)
     is_valid, err = validate_environment()

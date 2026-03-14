@@ -36,6 +36,7 @@ dependencies = [
     "setuptools>=61.0",
     "questionary>=1.10.0",
     "sqlite-vec>=0.1.0",
+    "celery>=5.5.3",
 ]
 
 [project.optional-dependencies]
@@ -54,8 +55,7 @@ memory = [
     "redis>=4.0.0",
 ]
 
-[project.scripts]
-mph-agent = "cli:main"
+# 不再设定 Python 包，仅保留桌面端与源码运行；使用 uv run python cli.py 启动
 
 [tool.setuptools]
 packages = ["agent", "schemas", "prompts", "prompts.planner", "prompts.react", "prompts.executor"]

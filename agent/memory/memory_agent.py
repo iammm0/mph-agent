@@ -2,8 +2,6 @@
 记忆 Agent：负责按会话整理用户建模指令的摘要式记忆。
 每次 run 结束后由 Celery 后台任务（或同步）调用，判断本轮交互是否需要纳入摘要并更新会话记忆。
 """
-from typing import Optional
-
 from agent.utils.context_manager import get_context_manager
 from agent.utils.logger import get_logger
 

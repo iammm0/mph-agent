@@ -1,6 +1,6 @@
 """任务数据结构定义"""
 from typing import Optional, List, Dict, Any, Literal
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 from schemas.geometry import GeometryPlan
@@ -59,6 +59,36 @@ class IterationRecord(BaseModel):
     reason: str = Field(..., description="迭代原因")
     changes: Dict[str, Any] = Field(default={}, description="计划变更")
     observations: List[Observation] = Field(default=[], description="本次迭代的观察结果")
+
+
+class ClarifyingOption(BaseModel):
+    """澄清问题的单个选项"""
+
+    id: str = Field(..., description="选项 ID（前后端通信用，不含空格）")
+    label: str = Field(..., description="展示给用户的标签文本")
+    value: str = Field(..., description="该选项对应的语义值（用于注入 Prompt）")
+
+
+class ClarifyingQuestion(BaseModel):
+    """Plan 阶段用于消解歧义的澄清问题"""
+
+    id: str = Field(..., description="问题 ID（前后端通信用，不含空格）")
+    text: str = Field(..., description="提问文案")
+    type: Literal["single", "multi"] = Field(
+        "single", description="问题类型：单选(single) 或多选(multi)"
+    )
+    options: List[ClarifyingOption] = Field(
+        default_factory=list, description="候选选项列表"
+    )
+
+
+class ClarifyingAnswer(BaseModel):
+    """用户对澄清问题的回答（仅用于 Prompt 注入与日志记录）"""
+
+    question_id: str = Field(..., description="对应的 ClarifyingQuestion.id")
+    selected_option_ids: List[str] = Field(
+        default_factory=list, description="用户选择的选项 ID 列表"
+    )
 
 
 class TaskPlan(BaseModel):
@@ -129,6 +159,15 @@ class ReActTaskPlan(BaseModel):
         default=None,
         description="执行到该步骤后保存模型并退出，取值：create_geometry/add_material/add_physics/generate_mesh/configure_study/solve",
     )
+    # 规划阶段提给用户的澄清问题（Plan 阶段用）
+    clarifying_questions: Optional[List[ClarifyingQuestion]] = Field(
+        default=None, description="规划前需要澄清的问题（结构化，供前端展示）"
+    )
+    # 用户对澄清问题的选择（Clarify 阶段回传，仅用于日志/Prompt 注入）
+    clarifying_answers: Optional[List[ClarifyingAnswer]] = Field(
+        default=None, description="用户对澄清问题的回答"
+    )
+    case_library_suggestions: Optional[List[Dict[str, str]]] = Field(default=None, description="官方案例库检索结果建议")
 
     # 子计划（动态属性，由 ActionExecutor 填充）
     geometry_plan: Optional[Any] = None

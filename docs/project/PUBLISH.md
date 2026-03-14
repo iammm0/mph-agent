@@ -1,5 +1,7 @@
 # PyPI 打包与发布指南
 
+> **说明**：本项目保留桌面端与源码运行，不再将 Python 包分发作为主要方式。以下内容仅供需要 PyPI 发布时参考。
+
 本文档说明如何将 `mph-agent` 构建为 PyPI 包并通过 GitHub Actions 发布到 PyPI 或 Test PyPI。
 
 ## 工作流概览

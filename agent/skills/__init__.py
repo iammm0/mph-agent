@@ -4,6 +4,7 @@ from typing import Optional
 from agent.skills.loader import SkillLoader, Skill
 from agent.skills.injector import SkillInjector
 from agent.skills.vector_store import SkillVectorStore, get_default_embedder
+from agent.skills.api_catalog_builder import build_api_capability_entries, ApiCapabilityEntry
 
 __all__ = [
     "SkillLoader",
@@ -12,6 +13,8 @@ __all__ = [
     "SkillVectorStore",
     "get_default_embedder",
     "get_skill_injector",
+    "build_api_capability_entries",
+    "ApiCapabilityEntry",
 ]
 
 _injector: Optional[SkillInjector] = None

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, asdict
 
-from agent.utils.config import get_settings, get_install_dir
+from agent.utils.config import get_install_dir
 from agent.utils.logger import get_logger
 
 logger = get_logger(__name__)

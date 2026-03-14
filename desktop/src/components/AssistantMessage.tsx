@@ -53,9 +53,13 @@ function formatTime(ts: number): string {
 }
 
 function extractModelPath(text: string): string | null {
-  if (!text || !text.includes("模型已生成:")) return null;
-  const path = text.replace(/^.*模型已生成:\s*/, "").trim();
-  return path || null;
+  if (!text) return null;
+  const partialIndex = text.lastIndexOf("模型已部分生成:");
+  const fullIndex = text.lastIndexOf("模型已生成:");
+  const idx = partialIndex >= 0 ? partialIndex : fullIndex;
+  if (idx < 0) return null;
+  const slice = text.slice(idx).replace(/^.*模型已(部分)?生成:\s*/, "").trim();
+  return slice || null;
 }
 
 function openInFolder(path: string) {

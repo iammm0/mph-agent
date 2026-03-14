@@ -63,7 +63,6 @@ def run_with_timeout(
     """
     process = None
     output_lines = []
-    error_occurred = [False]
     
     def read_output(pipe, is_stderr=False):
         """读取输出"""
@@ -240,10 +239,10 @@ def build():
         return 1
     except subprocess.CalledProcessError as e:
         if console:
-            console.print(f"  [red]❌ 构建失败[/red]")
+            console.print("  [red]❌ 构建失败[/red]")
             console.print(f"  错误代码: {e.returncode}")
         else:
-            print(f"  ❌ 构建失败")
+            print("  ❌ 构建失败")
             print(f"  错误代码: {e.returncode}")
         return 1
     except KeyboardInterrupt:
@@ -388,7 +387,7 @@ def _run_build(env: dict, progress, task):
     except BuildTimeoutError:
         progress.update(task, completed=100)
         raise
-    except Exception as e:
+    except Exception:
         if process:
             try:
                 process.terminate()

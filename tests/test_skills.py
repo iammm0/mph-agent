@@ -1,7 +1,6 @@
 """Skills 单元测试：SkillLoader 解析、SkillInjector 注入。"""
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch
 
 from agent.skills.loader import SkillLoader, Skill, _parse_skill_md
 from agent.skills.injector import SkillInjector, MARKER

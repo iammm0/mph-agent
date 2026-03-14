@@ -1,5 +1,5 @@
 """物理场建模数据结构定义"""
-from typing import Literal, List, Dict, Any, Optional, Union
+from typing import Literal, List, Dict, Any, Union
 from pydantic import BaseModel, Field
 
 

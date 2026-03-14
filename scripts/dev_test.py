@@ -6,19 +6,16 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from agent.planner.geometry_agent import GeometryAgent
-from agent.utils.logger import setup_logging, get_logger
-from schemas.geometry import GeometryPlan
-
-logger = get_logger(__name__)
-
 
 def test_planner():
     """测试 Planner Agent"""
     print("=" * 60)
     print("测试 Planner Agent")
     print("=" * 60)
-    
+
+    from agent.planner.geometry_agent import GeometryAgent
+    from agent.utils.logger import setup_logging
+
     setup_logging("DEBUG")
     
     try:

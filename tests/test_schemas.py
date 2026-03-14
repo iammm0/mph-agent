@@ -7,10 +7,7 @@ from schemas.physics import PhysicsPlan, PhysicsField
 from schemas.study import StudyPlan, StudyType
 from schemas.task import (
     ExecutionStep,
-    ReasoningCheckpoint,
     Observation,
-    IterationRecord,
-    TaskPlan,
     ReActTaskPlan,
 )
 

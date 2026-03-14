@@ -1,6 +1,4 @@
 """端到端集成测试（使用 agent 包与 schemas）。"""
-import pytest
-
 from schemas.geometry import GeometryPlan, GeometryShape
 
 

@@ -3,6 +3,7 @@ from typing import List, Optional
 
 from agent.skills.loader import SkillLoader, Skill
 from agent.skills.vector_store import SkillVectorStore
+from agent.skills.api_catalog_builder import build_api_capability_entries, ApiCapabilityEntry
 
 MARKER = "=== RELEVANT SKILLS (请采纳以下隐性知识) ==="
 
@@ -24,6 +25,40 @@ class SkillInjector:
         self.vector_store = vector_store
         self.top_k = max(1, top_k)
         self._last_used: List[str] = []
+        # 懒加载：官方 API 能力表条目，仅在需要时构建一次
+        self._api_entries: Optional[List[ApiCapabilityEntry]] = None
+
+    def _get_api_entries(self) -> List[ApiCapabilityEntry]:
+        """懒加载官方 API 能力表（基于 JavaAPIController._official_api_wrappers）。"""
+        if self._api_entries is None:
+            try:
+                self._api_entries = build_api_capability_entries()
+            except Exception:
+                self._api_entries = []
+        return self._api_entries or []
+
+    def get_api_capability_docs(self) -> List[Skill]:
+        """
+        将官方 API 能力条目视作“虚拟技能”，用于向量检索与注入。
+        注意：这里只构造内存中的 Skill 对象，不写 SKILL.md 文件。
+        """
+        entries = self._get_api_entries()
+        skills: List[Skill] = []
+        for e in entries:
+            skills.append(
+                Skill(
+                    name=e.name,
+                    description=e.title,
+                    instructions=e.instructions,
+                    version=None,
+                    author=None,
+                    tags=["comsol-api", "java-api"],
+                    triggers=[],
+                    prerequisites=[],
+                    path=None,
+                )
+            )
+        return skills
 
     def _get_skills_block(self, query: str) -> tuple[str, List[str]]:
         """根据 query 优先向量检索，否则 triggers/tags 匹配，返回 (拼接后的正文, 使用的技能名列表)。"""
@@ -32,7 +67,9 @@ class SkillInjector:
 
         # 1) 向量检索（若已配置且 DB 有数据）
         if self.vector_store and query:
-            self.vector_store.ensure_indexed(self.loader.list_skills())
+            # 1.1 动态构造：普通技能 + 官方 API 能力表虚拟技能
+            all_skills: List[Skill] = self.loader.list_skills() + self.get_api_capability_docs()
+            self.vector_store.ensure_indexed(all_skills)
             hits = self.vector_store.search(query, top_k=self.top_k)
             if hits:
                 for name, content, _ in hits:

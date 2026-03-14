@@ -1,5 +1,5 @@
 """几何建模数据结构定义 — 支持 2D/3D 形状、布尔运算、拉伸/旋转等操作"""
-from typing import Literal, List, Dict, Any, Optional, Union
+from typing import Literal, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator
 
 

@@ -7,15 +7,13 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from agent.planner.geometry_agent import GeometryAgent
-from agent.executor.comsol_runner import COMSOLRunner
-from agent.utils.logger import setup_logging, get_logger
-
-logger = get_logger(__name__)
-
 
 def main():
     """主函数"""
+    from agent.planner.geometry_agent import GeometryAgent
+    from agent.executor.comsol_runner import COMSOLRunner
+    from agent.utils.logger import setup_logging, get_logger
+
     parser = argparse.ArgumentParser(
         description="COMSOL Multiphysics Agent - 将自然语言转换为 COMSOL 模型文件"
     )
@@ -41,6 +39,7 @@ def main():
     # 配置日志
     log_level = "DEBUG" if args.verbose else "INFO"
     setup_logging(log_level)
+    logger = get_logger(__name__)
     
     try:
         logger.info("=" * 60)

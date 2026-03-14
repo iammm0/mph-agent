@@ -1,54 +1,27 @@
 # 安装和使用指南
 
-## 打包和安装
+本项目**保留桌面端与源码运行，不提供 Python 包分发**。请通过以下方式使用。
 
-### 1. 构建 Wheel（可 pip 安装的分发包）
+## 从源码运行
 
-**已验证可用的构建命令**（在项目根目录执行）：
+### 1. 安装依赖
 
-```bash
-uv build
-```
-
-- 需已安装 [uv](https://docs.astral.sh/uv/)；在项目根执行一次即可。
-- 成功后会在 `dist/` 下生成：
-  - `mph_agent-0.1.0-py3-none-any.whl`（wheel，用于 pip 安装）
-  - `mph_agent-0.1.0.tar.gz`（源码包）
-
-若未使用 uv，可用标准 build 方式：
+在项目根目录执行：
 
 ```bash
-pip install build wheel
-python -m build --wheel
-```
-
-#### 其他构建方式（可选）
-
-- 使用项目脚本：`python scripts/build.py`（需已安装 build）
-- Linux/Mac：`./scripts/build.sh`
-- Windows：`scripts\build.bat`
-
-### 2. 安装分发包
-
-```bash
-# 从 wheel 安装（pip 下载或本地文件）
-pip install dist/mph_agent-*.whl
-
-# 使用 uv
-uv pip install dist/mph_agent-*.whl
-
-# 从源码可编辑安装（开发模式）
 uv sync
-# 或 pip install -e .
 ```
 
-### 3. 验证安装
+需先安装 [uv](https://docs.astral.sh/uv/)。
+
+### 2. 启动
 
 ```bash
-uv run mph-agent
+# 启动桌面应用（无参数即启动 Tauri 桌面端）
+uv run python cli.py
 ```
 
-无参数即启动全终端 TUI（需安装 Bun）。若仅需验证可执行，运行后可用 `/quit` 退出。
+无参数即启动桌面应用。若已构建过桌面端可执行文件，会优先运行本地可执行文件。
 
 ## 环境配置
 
@@ -120,25 +93,13 @@ MODEL_OUTPUT_DIR=/path/to/output
 
 ## 环境检查
 
-安装和配置完成后，启动 TUI 并在其中运行诊断：
-
-```bash
-uv run mph-agent
-```
-
-在 TUI 底部输入 `/doctor` 进行环境检查。若所有检查通过，会显示通过信息；若有问题，会显示详细错误信息。
+安装和配置完成后，启动桌面应用，在底部输入 `/doctor` 进行环境检查。若所有检查通过，会显示通过信息；若有问题，会显示详细错误信息。
 
 ## 使用
 
 ### 基本使用
 
-所有功能均通过全终端 TUI 使用：
-
-```bash
-uv run mph-agent
-```
-
-进入 TUI 后：
+启动桌面应用后：
 
 - **默认模式**：在底部输入自然语言建模需求（如「创建一个宽1米、高0.5米的矩形」），直接生成 COMSOL 模型
 - **计划模式**：输入 `/plan` 切换为仅解析模式，下一句输入会解析为 JSON
@@ -146,21 +107,14 @@ uv run mph-agent
 
 ## 故障排除
 
-### 问题 1: 找不到 mph-agent 命令
-
-**解决方案**：
-- 确保已正确安装：`uv pip install dist/mph_agent-*.whl`
-- 检查 Python 环境：`which python` 或 `where python`
-- 重新安装：`uv pip uninstall mph-agent && uv pip install dist/mph_agent-*.whl`
-
-### 问题 2: 环境变量未生效
+### 问题 1: 环境变量未生效
 
 **解决方案**：
 - 使用 `.env` 文件（推荐）
 - 确保环境变量在正确的 shell 中设置
 - 重启终端或重新加载配置
 
-### 问题 3: COMSOL JAR 文件找不到
+### 问题 2: COMSOL JAR 文件找不到
 
 **解决方案**：
 - **COMSOL 6.3+ 版本**（推荐）：
@@ -173,17 +127,17 @@ uv run mph-agent
   - Linux: `/opt/comsol61/multiphysics/lib/glnxa64/comsol.jar`
   - Mac: `/Applications/COMSOL61/Multiphysics/lib/darwin64/comsol.jar`
 
-### 问题 4: Java 环境错误
+### 问题 3: Java 环境错误
 
 **解决方案**：
 - 推荐不配置 `JAVA_HOME`，使用项目内置 JDK 11（首次使用 COMSOL 时自动下载到 `runtime/java`）
 - 或确保已安装 JDK（不是 JRE），`JAVA_HOME` 指向正确路径，且版本与 COMSOL 兼容（通常 JDK 8-17）
 
-### 问题 5: 桌面版支持哪些系统？
+### 问题 4: 桌面版支持哪些系统？
 
 桌面应用**仅提供 Windows 安装包**（exe/msi），从 [GitHub Releases](https://github.com/iammm0/mph-agent/releases) 下载。暂不支持 macOS/Linux 桌面版。
 
-### 问题 6: Windows 桌面应用构建报错 `linker link.exe not found` 或 `dlltool.exe not found`
+### 问题 5: Windows 桌面应用构建报错 `linker link.exe not found` 或 `dlltool.exe not found`
 
 **原因**：桌面应用（Tauri）使用 Rust 编译。  
 - `link.exe not found`：当前为 MSVC 工具链，但未安装 Visual Studio 的 C++ 构建工具。  
@@ -196,7 +150,7 @@ uv run mph-agent
    ```bash
    rustup default stable-x86_64-pc-windows-msvc
    ```
-3. 重新打开终端，再执行 `npm run tauri dev` 或 `uv run mph-agent`。
+3. 重新打开终端，再执行 `npm run tauri dev` 或 `uv run python cli.py`。
 
 若已安装 Build Tools 但仍报 `link.exe not found`，可先打开 **「x64 本机工具命令提示」** 再编译。
 
@@ -220,12 +174,6 @@ uv run mph-agent
   3. 启动 worker：`celery -A agent.core.celery_app worker -l info`
   此后 `do_run` 会优先将记忆更新任务投递到 Celery，由 worker 异步执行；未安装或未启动时自动回退为同步更新。
 
-## 开发模式安装
+## 开发模式
 
-如果要在开发模式下安装（修改代码后立即生效）：
-
-```bash
-uv sync
-```
-
-这样安装后，代码修改会立即反映到已安装的包中。
+在项目根目录执行 `uv sync` 后，修改代码会立即生效，无需重新安装。

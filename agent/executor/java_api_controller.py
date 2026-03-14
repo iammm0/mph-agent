@@ -5,6 +5,10 @@ import base64
 import re
 import shutil
 import tempfile
+from html import unescape
+import importlib.util
+from types import MethodType
+from urllib.request import Request, urlopen
 
 from agent.executor.comsol_runner import COMSOLRunner
 from agent.executor.java_generator import JavaGenerator
@@ -15,6 +19,7 @@ from schemas.study import StudyPlan
 from schemas.material import MaterialPlan
 
 logger = get_logger(__name__)
+OFFICIAL_COMSOL_API_INDEX_URL = "https://doc.comsol.com/6.3/doc/com.comsol.help.comsol/api/index-all.html"
 
 
 def _jpype():
@@ -102,6 +107,14 @@ class JavaAPIController:
         self.settings = get_settings()
         self.comsol_runner = COMSOLRunner()
         self.java_generator = JavaGenerator()
+        self._official_api_entries: Optional[List[Dict[str, str]]] = None
+        self._official_api_wrappers: Dict[str, Dict[str, str]] = {}
+        wrappers_path = Path(__file__).resolve().parent / "comsol_official_api_wrappers.py"
+        if wrappers_path.exists():
+            try:
+                self.load_official_api_wrapper_module(str(wrappers_path))
+            except Exception as e:
+                logger.warning("加载静态官方 API 包装模块失败: %s", e)
 
     # ===== Model load helper =====
 
@@ -302,7 +315,7 @@ class JavaAPIController:
                     try:
                         pg = feat.propertyGroup(group)
                         pg.set(key, v)
-                    except Exception as e1:
+                    except Exception:
                         try:
                             pg.set(k, v)
                         except Exception as e2:
@@ -1220,7 +1233,7 @@ class JavaAPIController:
                     name_to_set = MATERIAL_PROPERTY_COMSOL_ALIAS.get(prop.name, prop.name)
                     try:
                         feat.propertyGroup(group).set(name_to_set, prop.value)
-                    except Exception as e1:
+                    except Exception:
                         try:
                             feat.propertyGroup(group).set(prop.name, prop.value)
                         except Exception as e2:
@@ -1494,6 +1507,257 @@ class JavaAPIController:
             return {"status": "success", "message": "验证通过"}
         except Exception as e:
             return {"status": "error", "message": f"验证失败: {e}"}
+
+    def fetch_official_api_entries(self, url: str = OFFICIAL_COMSOL_API_INDEX_URL, refresh: bool = False) -> List[Dict[str, str]]:
+        if self._official_api_entries is not None and not refresh:
+            return self._official_api_entries
+        req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urlopen(req, timeout=60) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+        html_pattern = re.compile(
+            r">([A-Za-z_]\w*\([^<)]*\))</a></span>\s*-\s*Method in (?:interface|class)\s*([^<]*?)<a[^>]*>\s*([A-Za-z_]\w*)\s*</a>",
+            re.IGNORECASE,
+        )
+        found = []
+        for signature, owner_prefix, owner_tail in html_pattern.findall(html):
+            owner = re.sub(r"\s+", "", unescape(owner_prefix)) + owner_tail
+            found.append((signature, owner))
+        if not found:
+            text = unescape(re.sub(r"<[^>]+>", " ", html))
+            text = re.sub(r"\s+", " ", text)
+            pattern = re.compile(
+                r"([A-Za-z_]\w*\([^)]*\))\s*-\s*Method in (?:interface|class)\s+([A-Za-z_][\w.]*)",
+                re.IGNORECASE,
+            )
+            found = pattern.findall(text)
+        unique: Dict[str, Dict[str, str]] = {}
+        for signature, owner in found:
+            method_name = signature.split("(", 1)[0]
+            key = f"{owner}::{signature}"
+            if key not in unique:
+                unique[key] = {"owner": owner, "signature": signature, "method_name": method_name}
+        self._official_api_entries = list(unique.values())
+        return self._official_api_entries
+
+    def _build_wrapper_name(self, owner: str, method_name: str, used: Dict[str, int]) -> str:
+        owner_tail = owner.split(".")[-1]
+        owner_token = re.sub(r"[^A-Za-z0-9_]", "_", owner_tail).lower()
+        method_token = re.sub(r"[^A-Za-z0-9_]", "_", method_name).lower()
+        base = f"api_{owner_token}_{method_token}"
+        used[base] = used.get(base, 0) + 1
+        if used[base] == 1:
+            return base
+        return f"{base}_{used[base]}"
+
+    def _resolve_api_target(self, model, target_path: Any):
+        if target_path is None:
+            return model
+        target = model
+        if isinstance(target_path, list):
+            for step in target_path:
+                if not isinstance(step, dict):
+                    raise ValueError("target_path 列表项必须为对象")
+                method_name = step.get("method")
+                args = step.get("args", [])
+                if not isinstance(args, list):
+                    raise ValueError("target_path 的 args 必须为列表")
+                target = self.comsol_runner.invoke_java_method(target, method_name, *args)
+            return target
+        if isinstance(target_path, str):
+            token_pattern = re.compile(r"([A-Za-z_]\w*)\(([^)]*)\)|([A-Za-z_]\w*)")
+            for match in token_pattern.finditer(target_path):
+                method_name = match.group(1) or match.group(3)
+                args_txt = match.group(2)
+                args: List[Any] = []
+                if args_txt:
+                    parts = [p.strip() for p in args_txt.split(",") if p.strip()]
+                    for p in parts:
+                        raw = p.strip()
+                        if (raw.startswith("'") and raw.endswith("'")) or (raw.startswith('"') and raw.endswith('"')):
+                            args.append(raw[1:-1])
+                        else:
+                            try:
+                                args.append(int(raw))
+                            except ValueError:
+                                try:
+                                    args.append(float(raw))
+                                except ValueError:
+                                    args.append(raw)
+                target = self.comsol_runner.invoke_java_method(target, method_name, *args)
+            return target
+        raise ValueError("target_path 必须为字符串、步骤数组或空")
+
+    def invoke_official_api(self, model_path: str, method_name: str, args: Optional[List[Any]] = None, target_path: Any = None) -> Dict[str, Any]:
+        try:
+            model = self._load_model(model_path)
+            target = self._resolve_api_target(model, target_path)
+            result = self.comsol_runner.invoke_java_method(target, method_name, *(args or []))
+            saved_path = _save_model_avoid_lock(model, Path(model_path))
+            out = {"status": "success", "method": method_name, "result": str(result)}
+            if saved_path != Path(model_path):
+                out["saved_path"] = str(saved_path)
+            return out
+        except Exception as e:
+            logger.error("invoke_official_api 失败: %s", e)
+            return {"status": "error", "message": str(e)}
+
+    def invoke_official_static_api(self, class_name: str, method_name: str, args: Optional[List[Any]] = None) -> Dict[str, Any]:
+        try:
+            COMSOLRunner._ensure_jvm_started()
+            result = self.comsol_runner.invoke_static_api(class_name, method_name, *(args or []))
+            return {"status": "success", "class_name": class_name, "method": method_name, "result": str(result)}
+        except Exception as e:
+            logger.error("invoke_official_static_api 失败: %s", e)
+            return {"status": "error", "message": str(e)}
+
+    def register_official_api_wrappers(self, url: str = OFFICIAL_COMSOL_API_INDEX_URL, refresh: bool = False) -> Dict[str, Any]:
+        entries = self.fetch_official_api_entries(url=url, refresh=refresh)
+        if refresh:
+            self._official_api_wrappers = {}
+        used: Dict[str, int] = {}
+        for entry in entries:
+            method_name = entry["method_name"]
+            owner = entry["owner"]
+            wrapper_name = self._build_wrapper_name(owner, method_name, used)
+            if wrapper_name in self._official_api_wrappers:
+                continue
+
+            def _wrapper(self, model_path: str, args: Optional[List[Any]] = None, target_path: Any = None, _method=method_name):
+                return self.invoke_official_api(model_path=model_path, method_name=_method, args=args, target_path=target_path)
+
+            setattr(self, wrapper_name, MethodType(_wrapper, self))
+            self._official_api_wrappers[wrapper_name] = entry
+        return {
+            "status": "success",
+            "total_entries": len(entries),
+            "total_wrappers": len(self._official_api_wrappers),
+            "wrappers": list(self._official_api_wrappers.keys()),
+        }
+
+    def render_official_api_wrapper_module(self, url: str = OFFICIAL_COMSOL_API_INDEX_URL, refresh: bool = False) -> str:
+        entries = self.fetch_official_api_entries(url=url, refresh=refresh)
+        used: Dict[str, int] = {}
+        wrappers: List[Dict[str, str]] = []
+        for entry in entries:
+            method_name = entry["method_name"]
+            owner = entry["owner"]
+            wrapper_name = self._build_wrapper_name(owner, method_name, used)
+            wrappers.append({"wrapper_name": wrapper_name, "method_name": method_name, "owner": owner})
+
+        lines: List[str] = []
+        lines.append('"""自动生成的 COMSOL 官方 API 包装函数集合。"""')
+        lines.append("from typing import Any, List, Optional")
+        lines.append("")
+        lines.append("")
+        lines.append("class OfficialComsolApiWrappersMixin:")
+        lines.append("    _OFFICIAL_WRAPPER_META = {")
+        for w in wrappers:
+            lines.append(
+                f'        "{w["wrapper_name"]}": {{"method": "{w["method_name"]}", "owner": "{w["owner"]}"}},'
+            )
+        lines.append("    }")
+        lines.append("")
+        for w in wrappers:
+            lines.append(
+                f"    def {w['wrapper_name']}(self, model_path: str, args: Optional[List[Any]] = None, target_path: Any = None):"
+            )
+            lines.append(
+                f'        return self.invoke_official_api(model_path=model_path, method_name="{w["method_name"]}", args=args, target_path=target_path)'
+            )
+            lines.append("")
+        return "\n".join(lines).rstrip() + "\n"
+
+    def write_official_api_wrapper_module(
+        self,
+        output_path: Optional[str] = None,
+        url: str = OFFICIAL_COMSOL_API_INDEX_URL,
+        refresh: bool = False,
+    ) -> Dict[str, Any]:
+        if output_path is None:
+            output_path = str(Path(__file__).resolve().parent / "comsol_official_api_wrappers.py")
+        source = self.render_official_api_wrapper_module(url=url, refresh=refresh)
+        out = Path(output_path).resolve()
+        out.write_text(source, encoding="utf-8")
+        wrapper_count = source.count("def api_")
+        return {
+            "status": "success",
+            "path": str(out),
+            "wrapper_count": wrapper_count,
+        }
+
+    def load_official_api_wrapper_module(self, module_path: Optional[str] = None) -> Dict[str, Any]:
+        if module_path is None:
+            module_path = str(Path(__file__).resolve().parent / "comsol_official_api_wrappers.py")
+        path = Path(module_path).resolve()
+        if not path.exists():
+            return {"status": "error", "message": f"包装模块不存在: {path}"}
+        spec = importlib.util.spec_from_file_location("comsol_official_api_wrappers", str(path))
+        if spec is None or spec.loader is None:
+            return {"status": "error", "message": "无法加载包装模块 spec"}
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        mixin_cls = getattr(module, "OfficialComsolApiWrappersMixin", None)
+        if mixin_cls is None:
+            return {"status": "error", "message": "包装模块缺少 OfficialComsolApiWrappersMixin"}
+        loaded = []
+        for name, value in mixin_cls.__dict__.items():
+            if name.startswith("api_") and callable(value):
+                setattr(self, name, MethodType(value, self))
+                loaded.append(name)
+        self._official_api_wrappers.update(getattr(mixin_cls, "_OFFICIAL_WRAPPER_META", {}))
+        return {"status": "success", "loaded": len(loaded), "wrappers": loaded}
+
+    # ===== Official API 能力表导出 =====
+
+    def list_official_api_wrappers(
+        self,
+        query: Optional[str] = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """
+        返回已加载的 COMSOL 官方 API 包装函数列表，便于前端浏览与向量检索构建能力表。
+
+        返回字段：
+        - items: [{wrapper_name, owner, method_name}]
+        - total: 总条数
+        - limit/offset: 分页信息
+        """
+        meta = self._official_api_wrappers or {}
+        records: List[Dict[str, str]] = []
+        for wrapper_name, info in meta.items():
+            owner = info.get("owner") or ""
+            method_name = info.get("method") or info.get("method_name") or ""
+            records.append(
+                {
+                    "wrapper_name": wrapper_name,
+                    "owner": owner,
+                    "method_name": method_name,
+                }
+            )
+        # 简单文本过滤
+        if query:
+            q = query.lower()
+            records = [
+                r
+                for r in records
+                if q in r["wrapper_name"].lower()
+                or q in r["owner"].lower()
+                or q in r["method_name"].lower()
+            ]
+        total = len(records)
+        records.sort(key=lambda r: r["wrapper_name"])
+        if limit is not None and limit > 0:
+            start = max(0, offset)
+            end = start + limit
+            records = records[start:end]
+        return {
+            "status": "success",
+            "items": records,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
 
     # ===== 模型预览（导出几何/结果图为 PNG，供桌面端显示）=====
 

@@ -1,5 +1,5 @@
 """研究类型数据结构定义"""
-from typing import Literal, List, Dict, Any, Optional
+from typing import Literal, Dict, Any, Optional
 from pydantic import BaseModel, Field
 
 

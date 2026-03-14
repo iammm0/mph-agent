@@ -16,18 +16,17 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from dotenv import load_dotenv
-load_dotenv(_project_root / ".env")
-
-from agent.utils.java_runtime import ensure_java_home_from_venv
-ensure_java_home_from_venv(_project_root)
-
-from schemas.geometry import GeometryPlan, GeometryShape
-from agent.executor.comsol_runner import COMSOLRunner
-from agent.utils.config import get_settings
-
 
 def main() -> None:
+    from dotenv import load_dotenv
+    from agent.utils.java_runtime import ensure_java_home_from_venv
+    from schemas.geometry import GeometryPlan, GeometryShape
+    from agent.executor.comsol_runner import COMSOLRunner
+    from agent.utils.config import get_settings
+
+    load_dotenv(_project_root / ".env")
+    ensure_java_home_from_venv(_project_root)
+
     print("1. 检查配置...")
     settings = get_settings()
     java_home = os.environ.get("JAVA_HOME", "")

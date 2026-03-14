@@ -2,9 +2,9 @@
 from typing import Literal, Optional, Dict, Any, Callable
 
 from agent.utils.config import get_settings as _get_settings
-from agent.utils.context_manager import ContextManager, get_context_manager as _get_context_manager
+from agent.utils.context_manager import get_context_manager as _get_context_manager
 from agent.utils.prompt_manager import get_prompt_manager as _get_prompt_manager
-from agent.core.events import EventBus, EventType, Event
+from agent.core.events import EventBus
 from agent.core.router import route
 from agent.agents.qa_agent import QAAgent
 from agent.agents.summary_agent import SummaryAgent
