@@ -1,6 +1,5 @@
 <div align="center">
   <h1>Multiphysics Modeling Agent</h1>
-  <h2>douyin:mingming</h2>
   <h2>wechat:physicisthacker2030</h2>
   <h2>本人本科原本是学习应用物理学的，但是今年26届毕业转行做计算机，这个项目是我毕业设计自我选题实践内容中的一部分，有物理系背景和计算机背景交叉领域的同好与前辈欢迎添加我的微信与我闲聊，在此之前，已经有对该项目感兴趣的友友向我提议想要建个群来交流这个项目</h2>
   <p>面向 COMSOL 的开源建模智能体，已接入 claw-code 执行链</p>
