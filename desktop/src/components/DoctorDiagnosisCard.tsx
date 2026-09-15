@@ -1,5 +1,6 @@
 import type { DoctorReport } from "../lib/parseDoctorReport";
 import { MarkdownContent } from "./MarkdownContent";
+import { Icon } from "./Icon";
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString("zh-CN", {
@@ -59,7 +60,7 @@ export function DoctorDiagnosisCard({
       <div className="doctor-diagnosis__head">
         <div className="doctor-diagnosis__title-row">
           <span className="doctor-diagnosis__icon" aria-hidden>
-            ◈
+            <Icon name="health" size={16} />
           </span>
           <h3 className="doctor-diagnosis__title">环境诊断</h3>
           {report && (
@@ -94,7 +95,7 @@ export function DoctorDiagnosisCard({
 
           {report.parityLines.length > 0 && (
             <section className="doctor-diagnosis__parity-wrap">
-              <h4 className="doctor-diagnosis__section-label">clawcode 覆盖</h4>
+              <h4 className="doctor-diagnosis__section-label">claw-code 移植覆盖（可选）</h4>
               <pre className="doctor-diagnosis__parity">{report.parityLines.join("\n")}</pre>
             </section>
           )}

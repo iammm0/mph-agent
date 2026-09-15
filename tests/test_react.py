@@ -159,9 +159,67 @@ class TestActionExecutor:
         assert result.get("status") == "error"
         assert "未知" in result.get("message", "")
 
-    def test_execute_import_geometry_delegates_to_clawcode(self):
-        """import_geometry 通过 claw-code 子进程委托执行。"""
+    def test_execute_import_geometry_uses_local_java_api_by_default(self):
+        """默认关闭 claw-code 时，import_geometry 走本地 JavaAPIController。"""
         executor = ActionExecutor()
+        executor.settings.claw_code_enabled = False
+        plan = ReActTaskPlan(task_id="t1", model_name="m1", user_input="u1")
+        plan.model_path = "/tmp/model.mph"
+        step = ExecutionStep(
+            step_id="s1",
+            step_type="geometry_io",
+            action="import_geometry",
+            parameters={"file_path": "/x.step"},
+            status="pending",
+        )
+        dispatcher = Mock()
+        executor._clawcode_dispatcher = dispatcher
+        controller = Mock()
+        controller.import_geometry.return_value = {
+            "status": "success",
+            "message": "ok",
+            "saved_path": "/tmp/imported.mph",
+        }
+        executor._java_api_controller = controller
+
+        result = executor.execute(plan, step, {"parameters": {"file_path": "/x.step"}})
+        assert result.get("status") == "success"
+        assert plan.model_path == "/tmp/imported.mph"
+        controller.import_geometry.assert_called_once()
+        dispatcher.dispatch.assert_not_called()
+
+    def test_execute_export_results_uses_local_java_api_by_default(self):
+        """默认关闭 claw-code 时，export_results 走本地 JavaAPIController。"""
+        executor = ActionExecutor()
+        executor.settings.claw_code_enabled = False
+        plan = ReActTaskPlan(task_id="t2", model_name="m2", user_input="u2")
+        plan.model_path = "/tmp/model.mph"
+        step = ExecutionStep(
+            step_id="s1",
+            step_type="postprocess",
+            action="export_results",
+            parameters={"out_path": "/out.png"},
+            status="pending",
+        )
+        dispatcher = Mock()
+        executor._clawcode_dispatcher = dispatcher
+        controller = Mock()
+        controller.export_plot_image.return_value = {
+            "status": "success",
+            "message": "exported",
+        }
+        executor._java_api_controller = controller
+
+        result = executor.execute(plan, step, {"parameters": {"out_path": "/out.png"}})
+        assert result.get("status") == "success"
+        assert result.get("path") == "/out.png"
+        controller.export_plot_image.assert_called_once()
+        dispatcher.dispatch.assert_not_called()
+
+    def test_execute_import_geometry_delegates_to_clawcode_when_enabled(self):
+        """CLAW_CODE_ENABLED=1 时，import_geometry 交给 dispatcher。"""
+        executor = ActionExecutor()
+        executor.settings.claw_code_enabled = True
         plan = ReActTaskPlan(task_id="t1", model_name="m1", user_input="u1")
         step = ExecutionStep(
             step_id="s1",
@@ -183,9 +241,10 @@ class TestActionExecutor:
         assert plan.model_path == "/tmp/imported.mph"
         dispatcher.dispatch.assert_called_once()
 
-    def test_execute_export_results_delegates_to_clawcode(self):
-        """export_results 通过 claw-code 子进程委托执行。"""
+    def test_execute_export_results_delegates_to_clawcode_when_enabled(self):
+        """CLAW_CODE_ENABLED=1 时，export_results 交给 dispatcher。"""
         executor = ActionExecutor()
+        executor.settings.claw_code_enabled = True
         plan = ReActTaskPlan(task_id="t2", model_name="m2", user_input="u2")
         step = ExecutionStep(
             step_id="s1",
@@ -208,24 +267,26 @@ class TestActionExecutor:
         dispatcher.dispatch.assert_called_once()
 
     def test_execute_clawcode_error_is_collected(self):
-        """claw-code 委托失败时收集结构化错误。"""
+        """opt-in 委托失败时收集结构化错误。"""
         error_collector = Mock()
         executor = ActionExecutor(error_collector=error_collector)
+        executor.settings.claw_code_enabled = True
         plan = ReActTaskPlan(task_id="t3", model_name="m3", user_input="u3")
         step = ExecutionStep(
             step_id="s1",
-            step_type="geometry",
-            action="create_geometry",
+            step_type="geometry_io",
+            action="import_geometry",
             status="pending",
         )
         dispatcher = Mock()
         dispatcher.dispatch.return_value = {"status": "error", "message": "failed"}
         executor._clawcode_dispatcher = dispatcher
 
-        result = executor.execute(plan, step, {"parameters": {}})
+        result = executor.execute(plan, step, {"parameters": {"file_path": "/x.step"}})
 
         assert result["status"] == "error"
         error_collector.submit.assert_called_once()
+        assert error_collector.submit.call_args.args[1] == "clawcode_dispatch_error"
 
     def test_execute_define_globals_validation_failed(self):
         """define_globals 参数校验失败时返回结构化错误并要求回到规划澄清。"""
@@ -386,7 +447,7 @@ class TestConfigSync:
 
         assert ok is True, message
         env_text = (tmp_path / ".env").read_text(encoding="utf-8")
-        assert "CLAW_CODE_ENABLED=1" in env_text
+        assert "CLAW_CODE_ENABLED=" not in env_text
         assert "CLAW_CODE_MODEL=gpt-test" in env_text
         assert "CLAW_CODE_BASE_URL=https://example.test/v1" in env_text
         assert "CLAW_CODE_API_KEY=sk-test" in env_text

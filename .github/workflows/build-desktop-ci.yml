@@ -1,5 +1,5 @@
-# Tauri 桌面端：构建；推 main 且构建成功后打 tag 并推送，触发发布工作流
-# 触发：推送到 main、或向 main/release 提 PR
+# Tauri 桌面端：构建；推 main 且构建成功后打 tag 并推送
+# 目标平台：Windows x64（AMD64）与 macOS Apple Silicon（arm64）
 name: Build Desktop (CI)
 
 on:
@@ -18,7 +18,11 @@ jobs:
       matrix:
         include:
           - platform: windows-latest
-            args: ''
+            artifact: windows-x64
+            args: '--bundles nsis,msi'
+          - platform: macos-latest
+            artifact: macos-arm64
+            args: '--bundles dmg'
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -32,6 +36,17 @@ jobs:
           cache: 'npm'
           cache-dependency-path: desktop/package-lock.json
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install Python deps
+        run: uv sync
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -44,8 +59,22 @@ jobs:
         run: npm ci
         working-directory: desktop
 
-      - name: Download bundled JDK 11 (Windows)
+      - name: Build Python bridge (Windows)
+        if: runner.os == 'Windows'
+        run: .\desktop\scripts\build-bridge.ps1
+
+      - name: Build Python bridge (macOS)
+        if: runner.os == 'macOS'
+        run: bash desktop/scripts/build-bridge.sh
+
+      - name: Download bundled JDK 11 (Windows x64)
+        if: runner.os == 'Windows'
         run: .\scripts\download-jdk11.ps1
+        working-directory: desktop
+
+      - name: Download bundled JDK 11 (macOS Apple Silicon)
+        if: runner.os == 'macOS'
+        run: bash scripts/download-jdk11.sh
         working-directory: desktop
 
       - name: Build (no release)
@@ -59,12 +88,12 @@ jobs:
       - name: Upload desktop build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-windows-${{ matrix.platform }}
+          name: desktop-${{ matrix.artifact }}
           path: |
             desktop/src-tauri/target/release/bundle/nsis/*.exe
             desktop/src-tauri/target/release/bundle/msi/**/*.msi
+            desktop/src-tauri/target/release/bundle/dmg/*.dmg
 
-  # 仅 push 到 main 时：构建成功后打 tag，直接创建草稿 Release 并上传 exe/msi（不再触发另一工作流重复构建）
   create-release:
     needs: build-tauri
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -106,21 +135,24 @@ jobs:
         if: steps.check-tag.outputs.exists != 'true'
         uses: actions/download-artifact@v4
         with:
-          name: desktop-windows-windows-latest
           path: release-files
+          merge-multiple: true
 
-      - name: Create Release and upload exe/msi
+      - name: Create Release and upload installers
         if: steps.check-tag.outputs.exists != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: Multiphysics Modeling Agent Desktop v${{ steps.version.outputs.version }}
           body: |
-            Windows 安装包（含内嵌 Java 11）。请下载 exe 或 msi 安装后使用。
+            安装包内含 Java 11。请按机器选择：
+            - Windows x64（AMD64）：exe / msi
+            - macOS Apple Silicon：dmg
             See the assets below to download and install.
           draft: true
           files: |
             release-files/**/*.exe
             release-files/**/*.msi
+            release-files/**/*.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

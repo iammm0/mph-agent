@@ -1,5 +1,6 @@
 import { useAppState } from "../context/AppStateContext";
 import { getProviderLabel } from "../lib/apiConfig";
+import { Icon } from "./Icon";
 
 export function Footer() {
   const { state } = useAppState();
@@ -21,7 +22,11 @@ export function Footer() {
       </span>
       <div className="footer-right">
         <span className="footer-mode">
-          <span className="dot">●</span> {modeLabel}
+          <Icon
+            name={state.mode === "discuss" ? "message-bubble" : state.mode === "plan" ? "task-square" : "play"}
+            size={13}
+          />{" "}
+          {modeLabel}
         </span>
         <span>{backendLabel}</span>
       </div>

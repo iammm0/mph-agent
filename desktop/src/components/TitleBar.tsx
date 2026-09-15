@@ -3,15 +3,16 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppState } from "../context/AppStateContext";
 import { getProviderLabel } from "../lib/apiConfig";
 import type { AppView } from "../lib/types";
+import { Icon } from "./Icon";
 
 const WIN_CONTROL_CLASS = "titlebar-win-control";
 
-const NAV_ITEMS: Array<{ view: AppView; label: string }> = [
-  { view: "session", label: "对话" },
-  { view: "case-library", label: "案例库" },
-  { view: "skills-system", label: "技能系统" },
-  { view: "ops-catalog", label: "操作" },
-  { view: "settings", label: "设置" },
+const NAV_ITEMS: Array<{ view: AppView; label: string; icon: string }> = [
+  { view: "session", label: "对话", icon: "messages" },
+  { view: "case-library", label: "案例库", icon: "book" },
+  { view: "skills-system", label: "技能系统", icon: "flash" },
+  { view: "ops-catalog", label: "操作", icon: "code-1" },
+  { view: "settings", label: "设置", icon: "setting-2" },
 ];
 
 export function TitleBar() {
@@ -34,7 +35,7 @@ export function TitleBar() {
     <div className="titlebar">
       <div className="titlebar-left" data-tauri-drag-region>
         <span className="titlebar-icon" aria-hidden>
-          MPH
+          <Icon name="3dcube" size={16} />
         </span>
         <span className="titlebar-title">多物理场建模智能体</span>
         <span className="titlebar-session" title={sessionTitle}>
@@ -52,6 +53,7 @@ export function TitleBar() {
               title={item.label}
               aria-label={item.label}
             >
+              <Icon name={item.icon} size={14} />
               <span>{item.label}</span>
             </button>
           ))}
@@ -72,7 +74,7 @@ export function TitleBar() {
           title="最小化"
           aria-label="最小化"
         >
-          <span className="titlebar-btn-icon">-</span>
+          <Icon name="minus" size={14} />
         </button>
         <button
           type="button"
@@ -81,7 +83,7 @@ export function TitleBar() {
           title="最大化 / 还原"
           aria-label="最大化"
         >
-          <span className="titlebar-btn-icon">[]</span>
+          <Icon name="maximize-3" size={14} />
         </button>
         <button
           type="button"
@@ -90,7 +92,7 @@ export function TitleBar() {
           title="关闭"
           aria-label="关闭"
         >
-          <span className="titlebar-btn-icon">x</span>
+          <Icon name="close-circle" size={14} />
         </button>
       </div>
     </div>

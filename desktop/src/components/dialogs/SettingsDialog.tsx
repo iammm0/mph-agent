@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ContextMemorySidebar } from "../ContextMemorySidebar";
+import { Icon } from "../Icon";
 import { useTheme, ACCENT_PRESETS } from "../../context/ThemeContext";
 import { useAppState } from "../../context/AppStateContext";
 import {
@@ -27,12 +28,12 @@ import {
 
 type SettingsTab = "theme" | "llm" | "comsol" | "memory" | "models";
 
-const TABS: { id: SettingsTab; label: string }[] = [
-  { id: "theme", label: "主题" },
-  { id: "llm", label: "LLM 配置" },
-  { id: "comsol", label: "COMSOL 配置" },
-  { id: "models", label: "模型管理" },
-  { id: "memory", label: "记忆管理" },
+const TABS: { id: SettingsTab; label: string; icon: string }[] = [
+  { id: "theme", label: "主题", icon: "colorfilter" },
+  { id: "llm", label: "LLM 配置", icon: "cpu" },
+  { id: "comsol", label: "COMSOL 配置", icon: "3dcube" },
+  { id: "models", label: "模型管理", icon: "folder-2" },
+  { id: "memory", label: "记忆管理", icon: "note-2" },
 ];
 
 const PROVIDER_GROUP_LABELS: Record<ProviderCatalogEntry["group"], string> = {
@@ -448,7 +449,7 @@ export function SettingsDialog({
             onClick={onClose}
             aria-label="关闭"
           >
-            ×
+            <Icon name="close-circle" size={16} />
           </button>
         )}
       </header>
@@ -463,6 +464,7 @@ export function SettingsDialog({
               }`}
               onClick={() => setActiveTab(tab.id)}
             >
+              <Icon name={tab.icon} size={16} className="settings-sidebar-icon" />
               <span className="settings-sidebar-label">{tab.label}</span>
             </button>
           ))}
@@ -481,6 +483,7 @@ export function SettingsDialog({
                     }`}
                     onClick={() => setThemeMode("light")}
                   >
+                    <Icon name="sun" size={14} />
                     浅色
                   </button>
                   <button
@@ -490,6 +493,7 @@ export function SettingsDialog({
                     }`}
                     onClick={() => setThemeMode("dark")}
                   >
+                    <Icon name="moon" size={14} />
                     深色
                   </button>
                   <button
@@ -499,6 +503,7 @@ export function SettingsDialog({
                     }`}
                     onClick={() => setThemeMode("system")}
                   >
+                    <Icon name="monitor" size={14} />
                     跟随系统
                   </button>
                 </div>
@@ -706,6 +711,9 @@ export function SettingsDialog({
             <div className="settings-card">
               <p className="settings-hint">
                 管理面向 COMSOL Multiphysics 6.3 自动建模所需的输出目录、JAR 路径和 Java 运行环境。
+                当前官方支持 Windows x64 与 macOS Apple Silicon：Windows 选择
+                <code>C:\Program Files\COMSOL\COMSOL63\Multiphysics\plugins</code>，
+                Apple Silicon 选择 <code>/Applications/COMSOL63/Multiphysics/plugins</code>。
               </p>
 
               <div className="settings-field">
@@ -743,7 +751,7 @@ export function SettingsDialog({
                   <input
                     type="text"
                     className="dialog-input settings-api-input settings-path-input"
-                    placeholder="未选择"
+                    placeholder="Windows: ...\COMSOL63\Multiphysics\plugins；macOS: /Applications/COMSOL63/Multiphysics/plugins"
                     value={apiConfig.comsol_jar_path}
                     readOnly
                   />

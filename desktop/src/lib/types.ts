@@ -157,27 +157,29 @@ export interface PromptExtensionItem {
   name: PromptExtensionName;
   label: string;
   description: string;
+  icon: string;
 }
 
 export const PROMPT_EXTENSION_ITEMS: PromptExtensionItem[] = [
-  { name: "help", label: "帮助", description: "打开帮助面板" },
-  { name: "discuss", label: "切换到探讨", description: "切换到 Discuss，与 LLM 理清需求" },
-  { name: "plan", label: "切换到规划", description: "切换到 Plan，生成建模计划与澄清" },
-  { name: "run", label: "切换到执行", description: "切换到 Run，按需求调用 COMSOL 建模" },
-  { name: "case", label: "读取 .mph 案例", description: "选择 .mph 文件并生成结构化案例摘要" },
-  { name: "ops", label: "COMSOL 操作清单", description: "打开 COMSOL 可执行操作清单页" },
+  { name: "help", label: "帮助", description: "打开帮助面板", icon: "message-question" },
+  { name: "discuss", label: "切换到探讨", description: "切换到 Discuss，与 LLM 理清需求", icon: "message-bubble" },
+  { name: "plan", label: "切换到规划", description: "切换到 Plan，生成建模计划与澄清", icon: "task-square" },
+  { name: "run", label: "切换到执行", description: "切换到 Run，按需求调用 COMSOL 建模", icon: "play" },
+  { name: "case", label: "读取 .mph 案例", description: "选择 .mph 文件并生成结构化案例摘要", icon: "document" },
+  { name: "ops", label: "COMSOL 操作清单", description: "打开 COMSOL 可执行操作清单页", icon: "code-1" },
   {
     name: "api",
     label: "官方 API 浏览",
     description: "浏览/搜索已集成的 COMSOL 官方 API 包装",
+    icon: "command-square",
   },
-  { name: "exec", label: "JSON 执行", description: "根据 JSON 创建模型" },
-  { name: "backend", label: "LLM 后端", description: "选择 LLM 后端" },
-  { name: "context", label: "上下文", description: "查看或清除对话历史" },
-  { name: "output", label: "输出设置", description: "设置默认输出文件名" },
-  { name: "demo", label: "演示示例", description: "触发内置示例" },
-  { name: "doctor", label: "环境诊断", description: "执行环境检查" },
-  { name: "exit", label: "退出程序", description: "关闭桌面应用" },
+  { name: "exec", label: "JSON 执行", description: "根据 JSON 创建模型", icon: "document-code" },
+  { name: "backend", label: "LLM 后端", description: "选择 LLM 后端", icon: "cpu" },
+  { name: "context", label: "上下文", description: "查看或清除对话历史", icon: "clock" },
+  { name: "output", label: "输出设置", description: "设置默认输出文件名", icon: "folder-2" },
+  { name: "demo", label: "演示示例", description: "触发内置示例", icon: "flash" },
+  { name: "doctor", label: "环境诊断", description: "执行环境检查", icon: "health" },
+  { name: "exit", label: "退出程序", description: "关闭桌面应用", icon: "logout-01" },
 ];
 
 /** 输入框「+」菜单：统一承载扩展功能入口 */
@@ -188,10 +190,11 @@ export const PROMPT_MODE_ITEMS: Array<{
   mode: AgentMode;
   label: string;
   title: string;
+  icon: string;
 }> = [
-  { mode: "discuss", label: "探讨", title: "Discuss：与 LLM 理清需求（不执行 COMSOL）" },
-  { mode: "plan", label: "规划", title: "Plan：生成建模计划与澄清" },
-  { mode: "run", label: "执行", title: "Run：按需求或已确认计划调用 COMSOL 建模" },
+  { mode: "discuss", label: "探讨", title: "Discuss：与 LLM 理清需求（不执行 COMSOL）", icon: "message-bubble" },
+  { mode: "plan", label: "规划", title: "Plan：生成建模计划与澄清", icon: "task-square" },
+  { mode: "run", label: "执行", title: "Run：按需求或已确认计划调用 COMSOL 建模", icon: "play" },
 ];
 
 /** 常用场景快捷提示（MessageList 空状态） */

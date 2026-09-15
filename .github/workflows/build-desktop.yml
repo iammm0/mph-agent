@@ -1,5 +1,5 @@
-# Tauri 桌面端：构建并发布（手动或 release 分支）；日常由 CI 构建后直接创建 Release，不由此工作流响应 tag
-# 触发：推送到 release 分支、或手动触发
+# Tauri 桌面端：构建并发布（手动或 release 分支）
+# 目标平台：Windows x64（AMD64）与 macOS Apple Silicon（arm64）
 name: Build and Release Desktop
 
 on:
@@ -17,7 +17,11 @@ jobs:
       matrix:
         include:
           - platform: windows-latest
-            args: ''
+            artifact: windows-x64
+            args: '--bundles nsis,msi'
+          - platform: macos-latest
+            artifact: macos-arm64
+            args: '--bundles dmg'
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -30,6 +34,17 @@ jobs:
           node-version: 'lts/*'
           cache: 'npm'
           cache-dependency-path: desktop/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install Python deps
+        run: uv sync
 
       # 统一解析版本与发布 tag：tag 触发用 tag 版本，否则用 tauri 配置中的版本（用 bash + node 避免 Windows PowerShell 解析 JS）
       - name: Resolve version and release tag
@@ -58,7 +73,6 @@ jobs:
           GITHUB_REF: ${{ github.ref }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
 
-      # 从 tag 触发时，将版本写回项目配置，保证构建产物版本与 release 一致（用 bash + node）
       - name: Sync version to project (when triggered by tag)
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
@@ -95,8 +109,22 @@ jobs:
         run: npm ci
         working-directory: desktop
 
-      - name: Download bundled JDK 11 (Windows)
+      - name: Build Python bridge (Windows)
+        if: runner.os == 'Windows'
+        run: .\desktop\scripts\build-bridge.ps1
+
+      - name: Build Python bridge (macOS)
+        if: runner.os == 'macOS'
+        run: bash desktop/scripts/build-bridge.sh
+
+      - name: Download bundled JDK 11 (Windows x64)
+        if: runner.os == 'Windows'
         run: .\scripts\download-jdk11.ps1
+        working-directory: desktop
+
+      - name: Download bundled JDK 11 (macOS Apple Silicon)
+        if: runner.os == 'macOS'
+        run: bash scripts/download-jdk11.sh
         working-directory: desktop
 
       - name: Build and release (Tauri)
@@ -107,7 +135,9 @@ jobs:
           projectPath: desktop
           tagName: ${{ steps.version.outputs.release_tag }}
           releaseName: Multiphysics Modeling Agent Desktop v${{ steps.version.outputs.version }}
-          releaseBody: 'See the assets below to download and install.'
+          releaseBody: |
+            Windows x64（AMD64）与 macOS Apple Silicon 安装包（含内嵌 Java 11）。
+            See the assets below to download and install.
           releaseDraft: true
           prerelease: false
           appVersion: ${{ steps.version.outputs.version }}

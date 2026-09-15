@@ -23,6 +23,7 @@ import {
   formatCompactTokenCount,
 } from "../lib/contextUsage";
 import type { PromptExtensionItem, AgentMode } from "../lib/types";
+import { Icon } from "./Icon";
 
 export function Prompt() {
   const { state, dispatch } = useAppState();
@@ -262,6 +263,7 @@ export function Prompt() {
               onClick={() => applyMode(item.mode)}
               disabled={busy}
             >
+              <Icon name={item.icon} size={13} />
               {item.label}
             </button>
           ))}
@@ -281,7 +283,7 @@ export function Prompt() {
             title="扩展功能"
             onClick={() => setShowPlusMenu((v) => !v)}
           >
-            +
+            <Icon name={showPlusMenu ? "minus" : "add"} size={16} />
           </button>
           {showPlusMenu && (
             <div className="prompt-plus-menu" role="menu">
@@ -293,7 +295,10 @@ export function Prompt() {
                   className="prompt-plus-menu-item"
                   onClick={() => void onPlusSelect(cmd)}
                 >
-                  <span className="prompt-plus-menu-cmd">{cmd.label}</span>
+                  <span className="prompt-plus-menu-row">
+                    <Icon name={cmd.icon} size={15} />
+                    <span className="prompt-plus-menu-cmd">{cmd.label}</span>
+                  </span>
                   <span className="prompt-plus-menu-desc">{cmd.description}</span>
                 </button>
               ))}
@@ -319,7 +324,7 @@ export function Prompt() {
           onClick={submit}
           title="发送 (Enter)"
         >
-          ↑
+          <Icon name="send-2" size={16} />
         </button>
         {busy && (
           <button
@@ -328,6 +333,7 @@ export function Prompt() {
             onClick={abortRun}
             title="停止建模"
           >
+            <Icon name="stop" size={14} />
             停止
           </button>
         )}

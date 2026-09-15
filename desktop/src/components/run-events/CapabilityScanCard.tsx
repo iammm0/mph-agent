@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { RunEvent } from "../../lib/types";
+import { Icon } from "../Icon";
 
 type ScanHit = {
   name: string;
@@ -187,7 +188,7 @@ export function CapabilityScanCard({
         title={state.query ? `查询：${state.query}` : undefined}
       >
         <span className="capability-scan-card__collapsed-icon" aria-hidden>
-          ⌕
+          <Icon name="search-normal" size={16} />
         </span>
         <span className="capability-scan-card__collapsed-text">
           已从 {totalLabel} 个 COMSOL 操作中选出 {summaryHits} 个相关能力
@@ -196,7 +197,7 @@ export function CapabilityScanCard({
           <span className="capability-scan-card__collapsed-meta">{state.elapsedMs} ms</span>
         ) : null}
         <span className="capability-scan-card__collapsed-arrow" aria-hidden>
-          ▸
+          <Icon name="arrow-right-01" size={14} />
         </span>
       </button>
     );
@@ -211,7 +212,7 @@ export function CapabilityScanCard({
       <header className="capability-scan-card__header">
         <div className="capability-scan-card__header-main">
           <span className="capability-scan-card__icon" aria-hidden>
-            ⌕
+            <Icon name="search-normal" size={16} />
           </span>
           <div className="capability-scan-card__title-block">
             <h4 className="capability-scan-card__title">

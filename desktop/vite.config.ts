@@ -1,5 +1,20 @@
+import { cpSync, existsSync, mkdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+
+const desktopRoot = path.dirname(fileURLToPath(import.meta.url));
+
+function syncIconsaxPublic() {
+  const src = path.join(desktopRoot, "node_modules/iconsax/dist");
+  const dest = path.join(desktopRoot, "public/iconsax");
+  if (!existsSync(src)) return;
+  mkdirSync(path.dirname(dest), { recursive: true });
+  cpSync(src, dest, { recursive: true });
+}
+
+syncIconsaxPublic();
 
 const host = process.env.TAURI_DEV_HOST;
 

@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "bundle": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-bridge.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File scripts/download-jdk11.ps1; npm run tauri build"
+    "bundle": "node scripts/bundle.mjs"
   },
   "dependencies": {
     "@fontsource/fraunces": "^5.2.9",
@@ -17,6 +17,7 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "better-react-mathjax": "^3.0.0",
+    "iconsax": "^0.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { RunEvent } from "../../lib/types";
+import { Icon } from "../Icon";
 
 function formatNumber(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
@@ -37,7 +38,7 @@ export function TokenBudgetCard({ event }: { event: RunEvent }) {
   return (
     <div className={`run-event-card run-event-card--budget run-event-card--budget-${severity}`}>
       <span className="run-event-card__icon" aria-hidden>
-        tk
+        <Icon name="chart" size={16} />
       </span>
       <div className="run-event-card__main">
         <div className="run-event-card__row">

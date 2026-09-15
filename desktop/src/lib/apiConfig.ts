@@ -678,7 +678,7 @@ export function apiConfigToEnv(config: ApiConfig): Record<string, string> {
     OPENAI_COMPATIBLE_MODEL: "",
     OLLAMA_URL: "",
     OLLAMA_MODEL: "",
-    CLAW_CODE_ENABLED: "1",
+    CLAW_CODE_ENABLED: "0",
     CLAW_CODE_MODEL: "",
     CLAW_CODE_BASE_URL: "",
     CLAW_CODE_API_KEY: "",

@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
 from agent.utils import secrets as secrets_utils
+from agent.utils.comsol_platform import detect_comsol_plugins_dir
 
 # 加载 .env 文件
 load_dotenv()
@@ -76,7 +77,7 @@ class Settings(BaseSettings):
     
     # COMSOL 配置
     comsol_jar_path: str = ""
-    # COMSOL 本地库目录（含 JNI .dll/.so），用于 -Djava.library.path，解决 UnsatisfiedLinkError: FlLicense.initWS0
+    # COMSOL 本地库目录（含 JNI .dll/.dylib/.so），用于 -Djava.library.path，解决 UnsatisfiedLinkError: FlLicense.initWS0
     comsol_native_path: str = ""
     java_home: Optional[str] = None
     model_output_dir: str = ""
@@ -85,8 +86,8 @@ class Settings(BaseSettings):
     # 为 true 时禁用自动下载 JDK，仅使用已存在的 JAVA_HOME 或 runtime/java（环境已就绪时可用）
     java_skip_auto_download: bool = False
 
-    # 内置 claw-code COMSOL 调度配置
-    claw_code_enabled: bool = True
+    # 内置 claw-code COMSOL 调度配置（默认关闭：建模主链路走本地 Java API）
+    claw_code_enabled: bool = False
     claw_code_max_turns: int = 12
     claw_code_timeout_seconds: float = 120.0
     claw_code_model: str = ""
@@ -107,6 +108,10 @@ class Settings(BaseSettings):
         # 如果未设置输出目录，使用默认值
         if not self.model_output_dir:
             self.model_output_dir = get_default_output_dir()
+        if not self.comsol_jar_path:
+            detected = detect_comsol_plugins_dir()
+            if detected:
+                self.comsol_jar_path = detected
 
     def get_api_key_for_backend(self, backend: str) -> Optional[str]:
         """获取当前后端的 API Key。顺序：环境变量优先，再 keyring。"""

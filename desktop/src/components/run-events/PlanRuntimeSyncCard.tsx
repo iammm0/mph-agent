@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { RunEvent } from "../../lib/types";
+import { Icon } from "../Icon";
 
 function safeString(value: unknown): string {
   if (value == null) return "";
@@ -37,7 +38,7 @@ export function PlanRuntimeSyncCard({ event }: { event: RunEvent }) {
   return (
     <div className={`run-event-card run-event-card--plan-sync run-event-card--plan-sync-${severity}`}>
       <span className="run-event-card__icon" aria-hidden>
-        pl
+        <Icon name={error ? "close-circle" : "clipboard-tick"} size={16} />
       </span>
       <div className="run-event-card__main">
         <div className="run-event-card__row">

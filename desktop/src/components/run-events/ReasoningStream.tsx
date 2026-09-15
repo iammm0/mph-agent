@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { RunEvent } from "../../lib/types";
 import { RunEventBlock } from "./index";
+import { Icon } from "../Icon";
 
 const PHASE_LABELS: Record<string, string> = {
   planning: "规划",
@@ -296,7 +297,7 @@ function PhaseSection({ block, isLive }: PhaseSectionProps) {
               title={expanded ? "收起本阶段" : "展开本阶段"}
             >
               <span className="reasoning-stream__phase-toggle-arrow" aria-hidden>
-                {expanded ? "▾" : "▸"}
+                <Icon name={expanded ? "arrow-down-01" : "arrow-right-01"} size={14} />
               </span>
               <span className="reasoning-stream__phase-label">{block.label}</span>
             </button>

@@ -90,6 +90,7 @@ Thumbs.db
 node_modules/
 desktop/node_modules/
 desktop/dist/
+desktop/public/iconsax/
 desktop/src-tauri/target/
 # 桌面安装包内嵌 JDK 11 内容（不提交，保留目录与 .gitkeep）
 desktop/src-tauri/resources/runtime/java/*

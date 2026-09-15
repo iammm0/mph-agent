@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppState } from "../context/AppStateContext";
 import { ConfirmDialog } from "./dialogs/ConfirmDialog";
+import { Icon } from "./Icon";
 
 const SIDEBAR_COLLAPSED_KEY = "mph-agent-sidebar-collapsed";
 
@@ -153,7 +154,7 @@ export function Sidebar() {
         title={collapsed ? "展开侧边栏" : "收起侧边栏"}
         aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}
       >
-        {collapsed ? "▶" : "◀"}
+        <Icon name={collapsed ? "sidebar-right" : "sidebar-left"} size={16} />
       </button>
       <button
         type="button"
@@ -162,7 +163,7 @@ export function Sidebar() {
         title="新建对话"
         aria-label="新建对话"
       >
-        {collapsed ? "+" : "+ 新建对话"}
+        {collapsed ? <Icon name="add" size={16} /> : <><Icon name="add" size={14} /> 新建对话</>}
       </button>
       {!collapsed && (
         <>
@@ -255,7 +256,7 @@ export function Sidebar() {
                           title="会话操作"
                           aria-label="会话操作"
                         >
-                          …
+                          <Icon name="more" size={14} />
                         </button>
                         {menuOpenId === conv.id && (
                           <div className="sidebar-item-menu">
@@ -336,7 +337,7 @@ export function Sidebar() {
                       }}
                       title="重命名集合"
                     >
-                      ✎
+                      <Icon name="edit-2" size={13} />
                     </button>
                     <button
                       type="button"
@@ -344,7 +345,7 @@ export function Sidebar() {
                       onClick={() => dispatch({ type: "DELETE_CONVERSATION_GROUP", id: group.id })}
                       title="删除集合"
                     >
-                      ×
+                      <Icon name="close-circle" size={13} />
                     </button>
                   </div>
                 </div>
@@ -375,7 +376,7 @@ export function Sidebar() {
                         title="会话操作"
                         aria-label="会话操作"
                       >
-                        …
+                        <Icon name="more" size={14} />
                       </button>
                       {menuOpenId === conv.id && (
                         <div className="sidebar-item-menu">

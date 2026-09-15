@@ -4,6 +4,12 @@ from pathlib import Path
 from typing import Tuple, List
 
 from agent.utils.config import get_settings
+from agent.utils.comsol_platform import (
+    get_platform_info,
+    resolve_comsol_jvm_path,
+    resolve_comsol_native_path,
+    unsupported_platform_message,
+)
 from agent.utils.java_runtime import get_effective_java_home, is_bundled_java_path, is_project_java_path
 from agent.utils.logger import get_logger
 from agent.utils import secrets as secrets_utils
@@ -49,7 +55,16 @@ def check_environment() -> EnvCheckResult:
     """
     result = EnvCheckResult()
     settings = get_settings()
-    
+    platform_info = get_platform_info()
+    result.add_info(f"运行平台: {platform_info.label} ({platform_info.platform_id})")
+    unsupported = unsupported_platform_message(platform_info)
+    if unsupported:
+        result.add_warning(unsupported)
+    else:
+        result.add_info(
+            f"官方支持范围：Windows x64 / macOS Apple Silicon；当前 COMSOL 架构目录: {platform_info.comsol_arch}"
+        )
+
     # 1. 检查 LLM 后端配置
     backend = settings.llm_backend.lower()
     result.add_info(f"LLM 后端: {backend}")
@@ -111,14 +126,46 @@ def check_environment() -> EnvCheckResult:
     
     # 2. 检查 COMSOL_JAR_PATH
     if not settings.comsol_jar_path:
-        result.add_error("COMSOL_JAR_PATH 未配置，请设置环境变量或 .env 文件")
+        result.add_error(
+            "COMSOL_JAR_PATH 未配置，且未在默认安装位置找到 COMSOL 6.3 plugins 目录。"
+            " Windows x64 示例: C:\\Program Files\\COMSOL\\COMSOL63\\Multiphysics\\plugins；"
+            " macOS Apple Silicon 示例: /Applications/COMSOL63/Multiphysics/plugins"
+        )
     else:
         jar_path = Path(settings.comsol_jar_path)
         if jar_path.exists():
-            size_mb = jar_path.stat().st_size / (1024 * 1024)
-            result.add_info(f"COMSOL JAR 文件存在: {jar_path} ({size_mb:.2f} MB)")
+            if jar_path.is_dir():
+                jar_count = len(list(jar_path.glob("*.jar")))
+                if jar_count:
+                    result.add_info(f"COMSOL plugins 目录存在: {jar_path}（{jar_count} 个 jar）")
+                else:
+                    result.add_error(f"COMSOL plugins 目录中未找到 .jar 文件: {jar_path}")
+            else:
+                size_mb = jar_path.stat().st_size / (1024 * 1024)
+                result.add_info(f"COMSOL JAR 文件存在: {jar_path} ({size_mb:.2f} MB)")
+            native_path = resolve_comsol_native_path(
+                jar_path,
+                native_override=settings.comsol_native_path or "",
+                info=platform_info,
+            )
+            if native_path:
+                result.add_info(f"COMSOL 本地库路径: {native_path}")
+            else:
+                result.add_warning(
+                    f"未找到 {platform_info.comsol_arch} 本地库目录。"
+                    " Apple Silicon 需要 lib/macarm64 与 bin/macarm64；"
+                    " Windows x64 需要 lib/win64 与 bin/win64。"
+                    " 也可手动设置 COMSOL_NATIVE_PATH。"
+                )
+            jvm_path = resolve_comsol_jvm_path(jar_path, info=platform_info)
+            if jvm_path:
+                result.add_info(f"COMSOL 自带 JRE: {jvm_path}")
+            else:
+                result.add_info(
+                    f"未找到 COMSOL 自带 JRE（java/{platform_info.comsol_arch}/...），将回退到 JAVA_HOME 或内置 JDK 11"
+                )
         else:
-            result.add_error(f"COMSOL JAR 文件不存在: {jar_path}")
+            result.add_error(f"COMSOL JAR 路径不存在: {jar_path}")
     
     # 3. 检查 Java（支持内置运行时：未配置 JAVA_HOME 时首次使用会自动下载 JDK 11）
     java_home = get_effective_java_home()

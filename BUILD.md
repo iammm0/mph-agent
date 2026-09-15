@@ -1,22 +1,27 @@
 # 构建说明：最终安装程序
 
-本文档说明如何在**项目根目录**下，将 **Python 桥接层 exe**、**前端桌面端**与**本地 Java 11** 一并构建进最终安装程序（NSIS/MSI）。
+本文档说明如何在**项目根目录**下，将 **Python 桥接层**、**前端桌面端**与**本地 Java 11** 一并构建进最终安装程序。
+
+官方打包目标：
+
+- **Windows x64（AMD64）**：NSIS / MSI
+- **macOS Apple Silicon**：DMG
 
 ## 最终安装程序包含内容
 
 | 组件 | 说明 | 构建产出位置 |
 |------|------|--------------|
-| Python 桥接层 | PyInstaller 打包的 `mph-agent-bridge.exe`（含 agent 与 bridge 逻辑） | `desktop/src-tauri/binaries/`，并被打包进安装程序 |
+| Python 桥接层 | PyInstaller 打包的 `mph-agent-bridge`（Windows 为 `.exe`） | `desktop/src-tauri/binaries/`，并被打包进安装程序 |
 | 前端桌面端 | Tauri + React 桌面应用 | 安装程序主程序 + 前端资源 |
 | 本地 Java 11 | 来自本地 `.venv/java11`（项目内置 JDK 11） | `desktop/src-tauri/resources/runtime/java`，并被打包进安装程序 |
 
-安装包生成目录：`desktop/src-tauri/target/release/bundle/`（内含 `.exe` 安装程序与 `.msi`）。
+安装包生成目录：`desktop/src-tauri/target/release/bundle/`（Windows 为 `.exe` / `.msi`，macOS 为 `.dmg`）。
 
 ---
 
 ## 前置条件
 
-- **Windows**（当前仅支持 Windows 桌面安装包）
+- **Windows x64** 或 **macOS Apple Silicon**
 - **Python 3.12+**（建议使用 uv：<https://docs.astral.sh/uv/>）
 - **Node.js LTS**（用于前端与 Tauri 构建）
 - **Rust**（stable，用于 Tauri）
@@ -29,7 +34,13 @@
 在**项目根目录**执行：
 
 ```powershell
-.\build-installer.ps1
+.\scripts\build-installer.ps1
+```
+
+macOS Apple Silicon：
+
+```bash
+bash scripts/build-installer.sh
 ```
 
 该脚本会依次：

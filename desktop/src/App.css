@@ -211,10 +211,24 @@ body {
     min-width: 0;
 }
 
+.ix-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    flex-shrink: 0;
+    color: inherit;
+}
+.ix-icon iconsax-icon {
+    display: block;
+}
+
 .titlebar-icon {
-    font-size: 14px;
-    opacity: 0.8;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     margin-right: 8px;
+    color: var(--primary);
 }
 
 .titlebar-title {
@@ -378,6 +392,10 @@ body {
     color: var(--text-muted);
     font-size: 13px;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     transition:
         color 0.15s,
         border-color 0.15s;
@@ -1903,19 +1921,14 @@ body {
 }
 .run-event-card__icon {
     flex-shrink: 0;
-    min-width: 34px;
+    min-width: 22px;
     width: auto;
     height: auto;
     display: inline-flex;
     align-items: flex-start;
     justify-content: flex-start;
     border-radius: 0;
-    padding-top: 2px;
-    font-size: 10px;
-    font-weight: 600;
-    font-family: var(--font-mono);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    padding-top: 1px;
     background: none;
     color: var(--text-muted);
     transition: color 0.2s ease;
@@ -2182,11 +2195,6 @@ body {
 }
 .run-event-callout__icon {
     flex-shrink: 0;
-    font-size: 10px;
-    font-weight: 600;
-    font-family: var(--font-mono);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
     color: var(--primary);
 }
 .run-event-callout__text {
@@ -4265,6 +4273,9 @@ body {
     background: var(--bg-element);
 }
 .prompt-mode-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 5px 12px;
     border: none;
     background: transparent;
@@ -4363,6 +4374,11 @@ body {
     text-align: left;
     font-family: inherit;
     transition: background 0.1s;
+}
+.prompt-plus-menu-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 .prompt-plus-menu-item:hover {
     background: var(--bg-element);
@@ -4471,6 +4487,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 6px;
     background: var(--danger, #c0392b);
     border: none;
     border-radius: 10px;
@@ -5045,6 +5062,9 @@ body {
     gap: 4px;
 }
 .theme-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 6px 14px;
     border: 1px solid var(--border);
     border-radius: var(--radius);

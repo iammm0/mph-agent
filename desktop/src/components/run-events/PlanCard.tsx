@@ -1,11 +1,14 @@
 import type { RunEvent } from "../../lib/types";
+import { Icon } from "../Icon";
 import { normalizeClarifyingQuestions } from "../../lib/clarifying";
 
 /** 规划开始：仅提示已进入规划，不重复展示用户输入全文 */
 export function PlanStartCard({ event: _event }: { event: RunEvent }) {
   return (
     <div className="run-event-card run-event-card--plan-start">
-      <span className="run-event-card__icon" aria-hidden>plan</span>
+      <span className="run-event-card__icon" aria-hidden>
+        <Icon name="task-square" size={16} />
+      </span>
       <div className="run-event-card__main">
         <span className="run-event-card__title">规划开始</span>
         <p className="run-event-card__plan-start-hint">已收到您的建模需求，正在拆解任务...</p>
@@ -53,7 +56,9 @@ export function PlanEndCard({ event }: { event: RunEvent }) {
 
   return (
     <div className="run-event-card run-event-card--plan-end">
-      <span className="run-event-card__icon" aria-hidden>ok</span>
+      <span className="run-event-card__icon" aria-hidden>
+        <Icon name="tick-circle" size={16} />
+      </span>
       <div className="run-event-card__main">
         <span className="run-event-card__title">规划完成</span>
         {model && <p className="run-event-card__model">{model}</p>}

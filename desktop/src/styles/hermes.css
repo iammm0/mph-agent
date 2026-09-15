@@ -93,15 +93,12 @@ body {
 }
 
 .titlebar-icon {
-    font-family: var(--font-display);
-    font-weight: 900;
-    font-size: 14px;
-    letter-spacing: 0.06em;
-    color: var(--primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     margin-right: 10px;
-    text-transform: uppercase;
+    color: var(--primary);
     flex-shrink: 0;
-    white-space: nowrap;
 }
 
 /* 注:中文加大字距会因每字独立换行,这里用细微字距即可 */

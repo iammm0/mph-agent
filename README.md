@@ -2,7 +2,7 @@
   <h1>Multiphysics Modeling Agent</h1>
   <h2>wechat:physicisthacker2030</h2>
   <h2>本人本科原本是学习应用物理学的，但是今年26届毕业转行做计算机，这个项目是我毕业设计自我选题实践内容中的一部分，有物理系背景和计算机背景交叉领域的同好与前辈欢迎添加我的微信与我闲聊，在此之前，已经有对该项目感兴趣的友友向我提议想要建个群来交流这个项目</h2>
-  <p>面向 COMSOL 的开源建模智能体，已接入 claw-code 执行链</p>
+  <p>面向 COMSOL 的开源建模智能体：规划层 + 本地 Java API 执行</p>
   <p>
     <img src="https://img.shields.io/badge/mph--agent-1.1.2-green.svg" alt="mph-agent 1.1.2">
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-%3E%3D3.10-blue.svg" alt="python >=3.10"></a>
@@ -10,17 +10,17 @@
     <img src="https://img.shields.io/badge/Tauri-2.10.2-555555.svg" alt="Tauri 2.10.2">
     <img src="https://img.shields.io/badge/React-18.3.1-61DAFB.svg" alt="React 18.3.1">
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="license MIT"></a>
-    <img src="https://img.shields.io/badge/platform-Windows%20Desktop-orange.svg" alt="platform Windows Desktop">
+    <img src="https://img.shields.io/badge/platform-Windows%20x64%20%7C%20macOS%20Apple%20Silicon-orange.svg" alt="platform Windows x64 | macOS Apple Silicon">
   </p>
   <p><b>中文</b> | English (coming soon)</p>
 </div>
 
 Multiphysics Modeling Agent（mph-agent）是一个面向 COMSOL Multiphysics 的开源建模智能体，目标是把自然语言建模需求变成可执行、可追踪、可复现的 `.mph` 模型文件。
 
-这条 `feat-clawcode-comsol-dispatch` 分支是一次明显的执行层升级。它把原本以内部封装为主的 COMSOL 调用链，重构为“规划层 + claw-code 执行层 + 官方 Java API 兜底”的组合式架构，重点解决三件事：
+这条分支把 COMSOL 调用链做成“规划层 + 本地 ActionExecutor + 官方 Java API”的主路径，重点解决三件事：
 
-1. 让 Agent 在单步 COMSOL 操作上具备更强的自治执行能力。
-2. 让复杂建模任务可以通过 `claw-code` 反复调度、修复、回写，形成真正的端到端建模闭环。
+1. 让自然语言需求稳定落到可执行的 COMSOL 步骤。
+2. 让几何、材料、物理、网格、研究、求解按阶段写回 `.mph`，形成可追踪的建模闭环。
 3. 让失败信息、阶段产物和调试轨迹更适合开源协作与社区复现。
 
 > 当前项目以 **COMSOL Multiphysics 6.3** 为目标版本研发、测试与维护；案例库、文档知识库、路径示例与相关提示均以 **6.3** 为准。
@@ -29,15 +29,14 @@ Multiphysics Modeling Agent（mph-agent）是一个面向 COMSOL Multiphysics �
 
 ## 这条分支做了什么
 
-这一分支的核心变化不是“再包一层 API”，而是把 COMSOL 执行从单一控制器推进到可回路化的工作流：
+执行层的核心是本地 Java API，而不是把 claw-code 当成建模骨架：
 
-- **claw-code 内嵌调度**：`agent/executor/clawcode_dispatcher.py` 通过嵌入式 Python claw-code 运行单步 COMSOL 操作，不再依赖外部子进程式拼接。
-- **官方 Java API 兜底**：`agent/executor/java_api_controller.py` 增强了材料、物理场、研究、静态 API 与节点对象调用能力，保证复杂场景也能落到 COMSOL 官方接口。
-- **按阶段写回模型**：`agent/react/action_executor.py` 将几何、材料、物理、网格、研究、求解等阶段拆分为独立模型产物，便于回溯和排错。
-- **材料规划更稳**：`agent/planner/material_agent.py` 对常见材料做了更直接的快速识别，降低 LLM 在基础材料选择上的不确定性。
-- **端到端回归脚本**：新增 `scripts/agent_build_loop.py`，支持反复跑完整建模流程并保存每次失败的事件日志，方便社区复现和修复。
-
-如果你把这条分支看作一个里程碑，那么它的关键词不是“更聪明”，而是“更能跑完、也更容易修好”。
+- **本地 ActionExecutor**：`agent/react/action_executor.py` 将几何、材料、物理、网格、研究、求解等步骤交给 `JavaAPIController` / `COMSOLRunner`。
+- **官方 Java API**：`agent/executor/java_api_controller.py` 覆盖材料、物理场、研究、静态 API 与节点对象调用。
+- **按阶段写回模型**：每个阶段生成独立 `.mph`，并维护 `_latest` 副本，便于回溯和排错。
+- **材料规划更稳**：`agent/planner/material_agent.py` 对常见材料做更直接的快速识别。
+- **端到端回归脚本**：`scripts/agent_build_loop.py` 反复跑完整建模流程并保存失败事件日志。
+- **可选 claw-code 旁路**：记忆压缩、token 预算、计划镜像默认可用；`CLAW_CODE_ENABLED=1` 时才把少数扩展动作交给内嵌调度器。
 
 ---
 
@@ -46,7 +45,7 @@ Multiphysics Modeling Agent（mph-agent）是一个面向 COMSOL Multiphysics �
 - [重要声明 / Disclaimer](#重要声明--disclaimer)
 - [简介](#简介)
 - [功能特性](#功能特性)
-- [claw-code 接入亮点](#claw-code-接入亮点)
+- [可选 claw-code 旁路](#可选-claw-code-旁路)
 - [界面预览](#界面预览)
 - [安装](#安装)
 - [环境配置](#环境配置)
@@ -70,9 +69,9 @@ Multiphysics Modeling Agent（mph-agent）是一个面向 COMSOL Multiphysics �
 
 ## 简介
 
-mph-agent 基于 ReAct（Reasoning & Acting）架构：先理解建模需求，再规划步骤，随后执行 COMSOL 操作，并通过观察结果继续迭代，最终生成可直接在 COMSOL 中打开的 `.mph` 文件。
+mph-agent 基于 ReAct（Reasoning & Acting）架构：先理解建模需求，再规划步骤，随后通过本地 Java API 执行 COMSOL 操作，并通过观察结果继续迭代，最终生成可直接在 COMSOL 中打开的 `.mph` 文件。
 
-这条分支引入 claw-code 后，项目从“能够生成建模指令”进一步走向“能够把建模指令真正跑到底”。也就是说，Agent 不再只停留在规划层，而是可以在单步执行层持续调用、验证和修复，使整个建模过程更接近真实工程工作流。
+claw-code 相关能力是旁路工具（记忆压缩、token 预算、计划镜像），以及可选的少数扩展动作调度，不是默认执行层。
 
 项目提供 **Tauri 2.10.2 + React 18.3.1 桌面应用** 与 **源码运行**，不提供 Python 包分发；支持多种 LLM 后端（DeepSeek、Kimi、Ollama、OpenAI 兼容等）。
 
@@ -85,7 +84,7 @@ mph-agent 基于 ReAct（Reasoning & Acting）架构：先理解建模需求，�
 - **计划模式**：`/plan` 触发结构化计划与澄清问答，确认后再执行
 - **多 LLM 后端**：DeepSeek、Kimi、OpenAI 兼容、Ollama
 - **COMSOL 集成**：面向 COMSOL Multiphysics 6.3 的 Java API、节点 API 与官方索引调用
-- **claw-code 内嵌调度**：为单步 COMSOL 操作提供嵌入式执行层，支持更细粒度的自动修复与回写
+- **可选 claw-code 旁路**：记忆压缩、token 预算、计划镜像；显式开启后才调度少数扩展 COMSOL 动作
 - **JavaAPI 操作目录**：`/ops_catalog` 列出可用的 COMSOL Java API 封装操作
 - **案例库**：`/case_library` 同步官网案例索引；`/case` 从本地 `.mph` 提取结构化操作 JSON
 - **技能库**：内置 Markdown 技能（`agent/skills/library/`），支持向量检索与注入；`/skills` 管理本地技能
@@ -95,29 +94,19 @@ mph-agent 基于 ReAct（Reasoning & Acting）架构：先理解建模需求，�
 
 ---
 
-## claw-code 接入亮点
+## 可选 claw-code 旁路
 
-这条分支最值得对外展示的地方，是它把 claw-code 变成了 mph-agent 的执行骨架之一，而不是一个边缘实验功能。
+建模主链路是 `ActionExecutor` + `JavaAPIController`。仓库里仍保留嵌入式 claw-code 运行时，但默认不参与 COMSOL 执行。
 
-### 1. 单步执行从“调用工具”升级为“执行回路”
+仍然默认启用的旁路能力：
 
-`ClawCodeComsolDispatcher` 会把一个 `ExecutionStep`、对应的 `thought`、当前模型路径和目标输出路径打包，交给嵌入式 claw-code 去执行，然后再把结果标准化成 JSON 返回给上层流程。
+1. **记忆压缩**：会话摘要走 claw-code 风格的 compact / microcompact。
+2. **token 预算**：推理阶段估算 prompt 预算，桌面端展示 TokenBudgetCard。
+3. **计划镜像**：把 `ReActTaskPlan` 同步到 PlanRuntime，便于审计和桌面展示。
 
-### 2. 执行结果强约束为 JSON
+仅当 `CLAW_CODE_ENABLED=1` 时，`import_geometry`、`create_selection`、`export_results`、`call_official_api` 才会交给 `ClawCodeComsolDispatcher`。几何、材料、物理、网格、研究、求解始终走本地实现。dispatcher 失败不会自动 fallback 到 Java API。
 
-claw-code 必须只输出一个 JSON 对象，包含 `status`、`message`、`model_path`、`saved_path`、`artifacts`、`details` 等字段。这样上层能稳定处理成功、失败、停止原因和附加产物，不会被自由文本打散。
-
-### 3. 官方 Java API 仍然保留兜底能力
-
-当高层封装不够时，`JavaAPIController` 可以继续走模型对象、节点对象或静态 Java API 的官方入口，保证复杂材料、物理场、研究和保存流程都能落到 COMSOL 原生接口。
-
-### 4. 每个阶段都有自己的模型副本
-
-`ActionExecutor` 会为几何、材料、物理、网格、研究、求解等阶段生成独立的 `.mph` 文件，并维护 `_latest` 副本。这种做法对开源协作尤其友好，因为失败点更清晰，回滚也更直接。
-
-### 5. 提供端到端回归脚本
-
-`scripts/agent_build_loop.py` 可以反复运行同一套建模提示，自动记录事件流和失败摘要，适合做回归测试、问题复现和社区协同修复。
+按阶段写回 `.mph` 和 `scripts/agent_build_loop.py` 回归脚本属于主链路，不依赖该开关。
 
 ---
 
@@ -141,7 +130,7 @@ claw-code 必须只输出一个 JSON 对象，包含 `status`、`message`、`mod
 ### 环境要求
 
 - **Python >= 3.10**（来自 `pyproject.toml` 的 `requires-python`）
-- **COMSOL Multiphysics 6.3**（已安装）
+- **COMSOL Multiphysics 6.3**（已安装；官方测试范围：Windows x64 / macOS Apple Silicon）
 - **Java JDK 8+**（与 COMSOL 兼容；项目也可使用内置 JDK 11）
 
 主要前端/桌面依赖以锁文件为准：
@@ -151,9 +140,14 @@ claw-code 必须只输出一个 JSON 对象，包含 `status`、`message`、`mod
 - **Vite 6.4.1**（`desktop/package-lock.json`）
 - **TypeScript 5.6.3**（`desktop/package-lock.json`）
 
-### 方式一：桌面版（推荐，仅 Windows）
+### 方式一：桌面版（推荐，Windows x64 / macOS Apple Silicon）
 
-从 [GitHub Releases](https://github.com/iammm0/mph-agent/releases) 下载 Windows 安装包（exe 或 msi，tag 格式为 `desktop-v*`），安装后运行即可。安装包内已包含 **Java 11**，无需单独安装 Python 或 JDK。暂不支持 macOS/Linux 桌面版。
+从 [GitHub Releases](https://github.com/iammm0/mph-agent/releases) 下载对应安装包（tag 格式为 `desktop-v*`）：
+
+- **Windows x64（AMD64）**：exe 或 msi
+- **macOS Apple Silicon**：dmg
+
+安装包内已包含 **Java 11**，无需单独安装 Python 或 JDK。暂不提供 Linux 桌面版，也不支持 Windows ARM 与 macOS Intel。
 
 ### 方式二：从源码运行
 
@@ -183,30 +177,30 @@ uv run python cli.py
 ### 必需
 
 1. **LLM**：设置 `LLM_BACKEND`（如 `deepseek`、`kimi`、`ollama`、`openai-compatible`），并配置对应 API Key / URL。
-2. **COMSOL**：设置 `COMSOL_JAR_PATH`  
-   - **COMSOL Multiphysics 6.3**：填 `plugins` 目录，例如  
-     `C:\Program Files\COMSOL\COMSOL63\Multiphysics\plugins` 或 `/opt/comsol63/multiphysics/plugins`
+2. **COMSOL**：设置 `COMSOL_JAR_PATH`（也可留空，程序会尝试探测本机默认安装位置）  
+   - **Windows x64 / COMSOL 6.3**：`C:\Program Files\COMSOL\COMSOL63\Multiphysics\plugins`
+   - **macOS Apple Silicon / COMSOL 6.3**：`/Applications/COMSOL63/Multiphysics/plugins`
 
 ### 可选
 
 - **JAVA_HOME**：不配置时优先用系统 Java，或使用项目内置 JDK 11（自动下载到 `runtime/java`）
 - **JAVA_DOWNLOAD_MIRROR**：国内可设 `tsinghua` 使用清华镜像
 - **JAVA_SKIP_AUTO_DOWNLOAD**：设为 `1` 时禁止自动下载内置 JDK，仅使用已存在的 `JAVA_HOME` 或 `runtime/java`
-- **COMSOL_NATIVE_PATH**：手动指定含 JNI `.dll`/`.so` 的本地库目录
+- **COMSOL_NATIVE_PATH**：手动指定含 JNI `.dll`/`.dylib` 的本地库目录；留空时 Windows 推导 `bin/win64`，Apple Silicon 推导 `bin/macarm64`
 - **MODEL_OUTPUT_DIR**：模型输出目录，默认项目根目录下的 `models`
 
-### claw-code 相关配置
+### claw-code 相关配置（可选）
 
-这条分支新增了内嵌 claw-code 调度配置：
+建模默认不走 claw-code 调度。旧 `.env` 若仍写 `CLAW_CODE_ENABLED=1`，会覆盖代码默认值。
 
-- `CLAW_CODE_ENABLED`：是否启用 claw-code 调度，默认开启
+- `CLAW_CODE_ENABLED`：是否把少数扩展动作交给 claw-code 调度，默认关闭（`0`）
 - `CLAW_CODE_MAX_TURNS`：单步执行轮数上限，默认 `12`
 - `CLAW_CODE_TIMEOUT_SECONDS`：单步执行超时时间，默认 `120`
 - `CLAW_CODE_MODEL`：显式指定 claw-code 使用的模型
 - `CLAW_CODE_BASE_URL`：显式指定 claw-code 的 OpenAI 兼容接口地址
 - `CLAW_CODE_API_KEY`：显式指定 claw-code 的 API Key
 
-如果这些值为空，嵌入式执行器会尽量复用当前桌面端所选 LLM 后端，降低额外配置成本。
+如果这些值为空，opt-in 调度会尽量复用当前桌面端所选 LLM 后端。保存桌面 LLM 配置不会强制打开该开关。
 
 ### 配置方式
 
@@ -217,7 +211,9 @@ LLM_BACKEND=ollama
 OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=llama3
 COMSOL_JAR_PATH=C:\Program Files\COMSOL\COMSOL63\Multiphysics\plugins
-CLAW_CODE_ENABLED=1
+# macOS Apple Silicon 示例：
+# COMSOL_JAR_PATH=/Applications/COMSOL63/Multiphysics/plugins
+CLAW_CODE_ENABLED=0
 CLAW_CODE_MAX_TURNS=12
 CLAW_CODE_TIMEOUT_SECONDS=120
 ```
@@ -308,7 +304,7 @@ mph-agent/
 - **输入层**：桌面端、CLI、Python API
 - **编排层**：`run/`、`core/`、`react/`，负责路由、会话和 ReAct 编排
 - **规划层**：`planner/`，把自然语言拆成几何、材料、物理、研究等结构化计划
-- **执行层**：`executor/`，负责 COMSOL 调用、claw-code 调度和官方 Java API 兜底
+- **执行层**：`executor/`，负责 COMSOL 调用与官方 Java API；claw-code 调度为可选旁路
 - **知识层**：`agent/skills/library/`、文档知识库与 `agent/prompts/` 注入
 - **支撑层**：`utils/`、配置、日志、Java 运行时与环境检查
 
@@ -320,7 +316,7 @@ mph-agent/
 
 - 运行 `scripts/agent_build_loop.py` 可以做端到端回归，自动保存每次尝试的事件日志和摘要
 - `/doctor` 可以快速检查 LLM、COMSOL、Java 与本地输出目录是否配置正确
-- 如果要追踪 claw-code 的单步执行结果，优先看 `logs/agent-build-loop/` 和每次生成的阶段性 `.mph` 文件
+- 如果要追踪执行结果，优先看 `logs/agent-build-loop/` 和每次生成的阶段性 `.mph` 文件
 - 详细 Agent 内部职责说明见 [AGENT.md](AGENT.md)
 
 ---
@@ -333,11 +329,11 @@ mph-agent/
 
 ### 为什么还保留官方 Java API？
 
-因为 claw-code 负责把执行跑起来，官方 Java API 负责把边角能力补齐。两者不是替代关系，而是互补关系。
+因为官方 Java API 就是默认执行层。claw-code 只在显式开启时处理少数扩展动作，失败时不会自动改走 Java API。
 
 ### 为什么需要额外的 `claw-code` 配置？
 
-如果你希望把 claw-code 接到独立模型或独立服务上，可以显式指定模型、Base URL 和 API Key；如果不配，它会尽量沿用当前 LLM 后端。
+默认不需要。只有打开 `CLAW_CODE_ENABLED=1`，或要把 opt-in 调度接到独立模型/服务时，才需要指定模型、Base URL 和 API Key；不配时它会尽量沿用当前 LLM 后端。
 
 ---
 

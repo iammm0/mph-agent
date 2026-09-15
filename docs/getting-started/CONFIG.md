@@ -26,9 +26,10 @@ COMSOL_JAR_PATH=C:/Program Files/COMSOL/COMSOL63/Multiphysics/plugins
 - 本项目默认按 COMSOL 6.3 的目录结构与 API 行为进行开发和验证
 
 **路径示例**：
-- **Windows COMSOL 6.3**：`C:/Program Files/COMSOL/COMSOL63/Multiphysics/plugins`
-- **Linux COMSOL 6.3**：`/opt/comsol63/multiphysics/plugins`
-- **Mac COMSOL 6.3**：`/Applications/COMSOL63/Multiphysics/plugins`
+- **Windows x64 / COMSOL 6.3**：`C:/Program Files/COMSOL/COMSOL63/Multiphysics/plugins`
+- **macOS Apple Silicon / COMSOL 6.3**：`/Applications/COMSOL63/Multiphysics/plugins`
+
+不填时会尝试探测上述默认安装位置。Apple Silicon 必须使用 COMSOL 6.3 原生安装包（本地库目录为 `macarm64`）；Intel 版不能通过 Rosetta 运行。
 
 #### 3. Java 配置（可选）
 - **不配置**：使用项目内置 JDK 11（`runtime/java`，首次使用 COMSOL 时自动下载）
@@ -43,9 +44,11 @@ JAVA_HOME=C:/Program Files/Java/jdk-17
 #### 4. COMSOL 本地库路径（可选）
 ```bash
 COMSOL_NATIVE_PATH=C:/Program Files/COMSOL/COMSOL63/Multiphysics/bin/win64
+# macOS Apple Silicon 示例：
+# COMSOL_NATIVE_PATH=/Applications/COMSOL63/Multiphysics/bin/macarm64
 ```
-- 手动指定含 JNI `.dll`（Windows）或 `.so`（Linux）的目录，解决 `UnsatisfiedLinkError: FlLicense.initWS0`
-- 留空时会按 `COMSOL_JAR_PATH` 自动推导（如 `bin/win64`、`bin/glnxa64`）
+- 手动指定含 JNI `.dll`（Windows）或 `.dylib`（macOS）的目录，解决 `UnsatisfiedLinkError: FlLicense.initWS0`
+- 留空时会按 `COMSOL_JAR_PATH` 自动推导（Windows：`bin/win64`；Apple Silicon：`bin/macarm64`）
 
 ### 可选配置
 
@@ -85,7 +88,9 @@ uv run python cli.py
 **解决方案**：
 1. 确认 COMSOL 已正确安装
 2. **对于 COMSOL Multiphysics 6.3**：
-   - 配置为 `plugins` 目录：`C:/Program Files/COMSOL/COMSOL63/Multiphysics/plugins`
+   - 配置为 `plugins` 目录，例如：
+     - Windows x64：`C:/Program Files/COMSOL/COMSOL63/Multiphysics/plugins`
+     - macOS Apple Silicon：`/Applications/COMSOL63/Multiphysics/plugins`
    - 程序会自动加载目录下所有 jar 文件
 3. 若本机不是 COMSOL 6.3 环境，请先确认目录结构和 Java API 行为与当前项目兼容
 
@@ -105,7 +110,7 @@ uv run python cli.py
 
 ## 配置示例
 
-### Windows 完整配置示例（COMSOL 6.3）
+### Windows x64 完整配置示例（COMSOL 6.3）
 ```bash
 DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxx
 COMSOL_JAR_PATH=C:/Program Files/COMSOL/COMSOL63/Multiphysics/plugins
@@ -114,16 +119,7 @@ MODEL_OUTPUT_DIR=./models
 LOG_LEVEL=INFO
 ```
 
-### Linux 完整配置示例（COMSOL 6.3）
-```bash
-DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxx
-COMSOL_JAR_PATH=/opt/comsol63/multiphysics/plugins
-JAVA_HOME=/usr/lib/jvm/java-11-openjdk
-MODEL_OUTPUT_DIR=./models
-LOG_LEVEL=INFO
-```
-
-### Mac 完整配置示例（COMSOL 6.3）
+### macOS Apple Silicon 完整配置示例（COMSOL 6.3）
 ```bash
 DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxx
 COMSOL_JAR_PATH=/Applications/COMSOL63/Multiphysics/plugins

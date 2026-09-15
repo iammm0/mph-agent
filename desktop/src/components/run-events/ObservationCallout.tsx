@@ -1,4 +1,5 @@
 import type { RunEvent } from "../../lib/types";
+import { Icon } from "../Icon";
 
 export function ObservationCallout({ event }: { event: RunEvent }) {
   const d = event.data ?? {};
@@ -16,7 +17,7 @@ export function ObservationCallout({ event }: { event: RunEvent }) {
       }`}
     >
       <span className="run-event-callout__icon" aria-hidden>
-        {isError ? "err" : isWarning ? "warn" : "note"}
+        <Icon name={isError ? "close-circle" : isWarning ? "warning-2" : "info-circle"} size={16} />
       </span>
       <p className="run-event-callout__text">{message}</p>
     </div>

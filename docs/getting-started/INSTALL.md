@@ -2,7 +2,7 @@
 
 本项目**保留桌面端与源码运行，不提供 Python 包分发**。请通过以下方式使用。
 
-> 当前项目面向 **COMSOL Multiphysics 6.3** 开发与验证。安装说明、路径示例与案例库默认版本均以 **6.3** 为准。
+> 当前项目面向 **COMSOL Multiphysics 6.3** 开发与验证。官方测试范围是 **Windows x64（AMD64）** 与 **macOS Apple Silicon**。安装说明、路径示例与案例库默认版本均以 **6.3** 为准。
 
 ## 从源码运行
 
@@ -42,12 +42,12 @@ uv run python cli.py
    export DEEPSEEK_API_KEY="your_api_key_here"
    ```
 
-2. **COMSOL_JAR_PATH** - COMSOL 6.3 `plugins` 目录
+2. **COMSOL_JAR_PATH** - COMSOL 6.3 `plugins` 目录（留空时会尝试探测默认安装位置）
    ```bash
-   # Linux/Mac
-   export COMSOL_JAR_PATH="/opt/comsol63/multiphysics/plugins"
+   # macOS Apple Silicon
+   export COMSOL_JAR_PATH="/Applications/COMSOL63/Multiphysics/plugins"
    
-   # Windows
+   # Windows x64
    set COMSOL_JAR_PATH=C:\Program Files\COMSOL\COMSOL63\Multiphysics\plugins
    ```
    
@@ -71,7 +71,7 @@ uv run python cli.py
 
 5. **JAVA_SKIP_AUTO_DOWNLOAD** - 设为 `1` 时禁止自动下载内置 JDK，仅使用已存在的 `JAVA_HOME` 或 `runtime/java`
 
-6. **COMSOL_NATIVE_PATH** - 手动指定含 JNI `.dll`/`.so` 的本地库目录（解决 `UnsatisfiedLinkError: FlLicense.initWS0`）；留空时按 `COMSOL_JAR_PATH` 自动推导 `bin/win64` 等路径
+6. **COMSOL_NATIVE_PATH** - 手动指定含 JNI `.dll`/`.dylib` 的本地库目录（解决 `UnsatisfiedLinkError: FlLicense.initWS0`）；留空时 Windows 推导 `bin/win64`，Apple Silicon 推导 `bin/macarm64`
 
 7. **MODEL_OUTPUT_DIR** - 模型输出目录（默认为 **mph-agent 根目录下的 `models`**，该目录为唯一且首要；项目根目录上一级的 `models` 不再使用）
    ```bash
@@ -123,10 +123,9 @@ MODEL_OUTPUT_DIR=/path/to/output
 
 **解决方案**：
 - **COMSOL Multiphysics 6.3**：
-  - Windows: `C:\Program Files\COMSOL\COMSOL63\Multiphysics\plugins`
-  - Linux: `/opt/comsol63/multiphysics/plugins`
-  - Mac: `/Applications/COMSOL63/Multiphysics/plugins`
-  - 配置为plugins目录，程序会自动加载所有jar文件
+  - Windows x64: `C:\Program Files\COMSOL\COMSOL63\Multiphysics\plugins`
+  - macOS Apple Silicon: `/Applications/COMSOL63/Multiphysics/plugins`
+  - 配置为 plugins 目录，程序会自动加载所有 jar 文件。Apple Silicon 必须安装 COMSOL 6.3 原生包（`macarm64`），不能使用 Intel 版通过 Rosetta 运行。
 
 ### 问题 3: Java 环境错误
 
@@ -136,7 +135,14 @@ MODEL_OUTPUT_DIR=/path/to/output
 
 ### 问题 4: 桌面版支持哪些系统？
 
-桌面应用**仅提供 Windows 安装包**（exe/msi），从 [GitHub Releases](https://github.com/iammm0/mph-agent/releases) 下载。暂不支持 macOS/Linux 桌面版。
+桌面应用当前提供：
+
+- **Windows x64（AMD64）**：exe / msi
+- **macOS Apple Silicon**：dmg
+
+从 [GitHub Releases](https://github.com/iammm0/mph-agent/releases) 下载。暂不支持 Linux、Windows ARM 与 macOS Intel。
+
+源码运行（`uv sync` + `uv run python cli.py`）在上述两个平台上均可用于功能测试。
 
 ### 问题 5: Windows 桌面应用构建报错 `linker link.exe not found` 或 `dlltool.exe not found`
 

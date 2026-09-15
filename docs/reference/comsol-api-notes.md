@@ -103,7 +103,7 @@ public class Example {
 
 **处理**：
 
-1. 为 JVM 设置 **java.library.path**，指向 COMSOL 安装目录下的 **bin 子目录**（如 Windows 下 `Multiphysics\bin\win64`）。本仓库在启动 JVM 时会根据 `COMSOL_JAR_PATH` 自动推导该路径（如 `.../plugins` → `.../bin/win64`）；若推导不对，可在 `.env` 中设置 **COMSOL_NATIVE_PATH** 为实际 bin 目录。
+1. 为 JVM 设置 **java.library.path**，指向 COMSOL 安装目录下的 **bin / lib 子目录**（Windows：`Multiphysics\bin\win64`；macOS Apple Silicon：`Multiphysics/bin/macarm64` 与 `lib/macarm64`）。本仓库在启动 JVM 时会根据 `COMSOL_JAR_PATH` 自动推导该路径；若推导不对，可在 `.env` 中设置 **COMSOL_NATIVE_PATH** 为实际 bin 目录。
 2. 或将 COMSOL 的 bin 目录加入系统 **PATH**，使 JVM 能加载到对应 .dll/.so。
 3. 确认 COMSOL 许可证在无头/批处理模式下可用（若仅桌面授权，可能仍需在 GUI 环境下运行）。
 

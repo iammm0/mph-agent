@@ -1,19 +1,18 @@
 fn main() {
-    #[cfg(target_os = "windows")]
-    ensure_windows_icon_format();
-
+    ensure_icon_ico();
     tauri_build::build()
 }
 
-/// 在 Windows 上生成符合 RC 要求的 ICO 格式，避免 RC2175（not in 3.00 format）
-#[cfg(target_os = "windows")]
-fn ensure_windows_icon_format() {
+/// 生成符合 RC / include_image 要求的 ICO，Windows 与 macOS 开发模式都需要。
+fn ensure_icon_ico() {
     use std::path::Path;
 
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
     let icon_path = Path::new(&manifest_dir).join("icons").join("icon.ico");
+    if icon_path.exists() {
+        return;
+    }
 
-    // 32x32 RGBA，简单蓝色
     let rgba: Vec<u8> = (0..32 * 32 * 4)
         .map(|i| {
             if i % 4 == 3 {

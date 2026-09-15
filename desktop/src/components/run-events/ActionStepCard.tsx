@@ -1,9 +1,10 @@
 import type { RunEvent } from "../../lib/types";
+import { Icon } from "../Icon";
 
 function getActionIcon(type: string): string {
-  if (type === "action_end") return "ok";
-  if (type === "exec_result") return "out";
-  return "run";
+  if (type === "action_end") return "tick-circle";
+  if (type === "exec_result") return "export-circle-01";
+  return "play";
 }
 
 export function ActionStepCard({ event }: { event: RunEvent }) {
@@ -20,7 +21,7 @@ export function ActionStepCard({ event }: { event: RunEvent }) {
     return (
       <div className="run-event-card run-event-card--action">
         <span className="run-event-card__icon run-event-card__icon--play" aria-hidden>
-          {getActionIcon(type)}
+          <Icon name={getActionIcon(type)} size={16} />
         </span>
         <div className="run-event-card__main">
           <span className="run-event-card__title">{actionText || "执行"}</span>
@@ -36,7 +37,7 @@ export function ActionStepCard({ event }: { event: RunEvent }) {
     return (
       <div className="run-event-card run-event-card--action-end">
         <span className="run-event-card__icon run-event-card__icon--done" aria-hidden>
-          ok
+          <Icon name="tick-circle" size={16} />
         </span>
         <span className="run-event-card__title">{action}</span>
       </div>
@@ -55,7 +56,7 @@ export function ActionStepCard({ event }: { event: RunEvent }) {
   return (
     <div className={`run-event-card run-event-card--result run-event-card--result-${success ? "ok" : "fail"}`}>
       <span className="run-event-card__icon" aria-hidden>
-        {success ? "ok" : "err"}
+        <Icon name={success ? "tick-circle" : "close-circle"} size={16} />
       </span>
       <div className="run-event-card__main">
         <span className="run-event-card__title">{title}</span>

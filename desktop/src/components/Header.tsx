@@ -1,4 +1,5 @@
 import { useAppState } from "../context/AppStateContext";
+import { Icon } from "./Icon";
 
 export function Header() {
   const { dispatch, sessionTitle, messages } = useAppState();
@@ -15,7 +16,7 @@ export function Header() {
           title="设置"
           aria-label="设置"
         >
-          设置
+          <Icon name="setting-2" size={16} />
         </button>
       </div>
     </div>

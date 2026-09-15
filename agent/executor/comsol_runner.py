@@ -1,12 +1,19 @@
 """COMSOL API 运行器 — 支持 2D/3D 几何"""
 
 import os
-import platform
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from agent.utils.config import get_project_root, get_settings
+from agent.utils.comsol_platform import (
+    apply_native_library_env,
+    get_platform_info,
+    java_home_from_jvm,
+    resolve_comsol_jvm_path,
+    resolve_comsol_native_path,
+    unsupported_platform_message,
+)
 from agent.utils.java_runtime import ensure_bundled_java
 from agent.utils.logger import get_logger
 from agent.schemas.geometry import GeometryPlan, GeometryShape
@@ -30,57 +37,14 @@ def _jpype():
 
 
 def _resolve_comsol_native_path(settings) -> Optional[str]:
-    if getattr(settings, "comsol_native_path", None) and Path(settings.comsol_native_path).exists():
-        return str(Path(settings.comsol_native_path).resolve())
-    jar_path = Path(settings.comsol_jar_path)
-    if not jar_path.exists():
-        return None
-    if jar_path.is_dir():
-        base = jar_path.parent
-    else:
-        base = jar_path.parent.parent
-    sep = ";" if os.name == "nt" else ":"
-    if platform.system() == "Windows":
-        lib_dir = base / "lib" / "win64"
-        bin_dir = base / "bin" / "win64"
-        license_dir = base / "license" / "win64"
-        license_lmadmin = base / "license" / "win64" / "lmadmin"
-    elif platform.system() == "Darwin":
-        lib_dir = base / "lib" / "darwin64"
-        bin_dir = base / "bin" / "darwin64"
-        license_dir = license_lmadmin = None
-    else:
-        lib_dir = base / "lib" / "glnxa64"
-        bin_dir = base / "bin" / "glnxa64"
-        license_dir = license_lmadmin = None
-    parts = []
-    if lib_dir.exists():
-        parts.append(str(lib_dir.resolve()))
-    if bin_dir.exists() and str(bin_dir.resolve()) not in parts:
-        parts.append(str(bin_dir.resolve()))
-    if license_dir and license_dir.exists() and str(license_dir.resolve()) not in parts:
-        parts.append(str(license_dir.resolve()))
-    if license_lmadmin and license_lmadmin.exists() and str(license_lmadmin.resolve()) not in parts:
-        parts.append(str(license_lmadmin.resolve()))
-    if not parts:
-        return None
-    return sep.join(parts)
+    return resolve_comsol_native_path(
+        settings.comsol_jar_path,
+        native_override=getattr(settings, "comsol_native_path", "") or "",
+    )
 
 
 def _get_comsol_jvm_path(settings) -> Optional[str]:
-    jar_path = Path(settings.comsol_jar_path)
-    if not jar_path.exists():
-        return None
-    base = jar_path.parent if jar_path.is_dir() else jar_path.parent.parent
-    if platform.system() == "Windows":
-        jvm_dll = base / "java" / "win64" / "jre" / "bin" / "server" / "jvm.dll"
-    elif platform.system() == "Darwin":
-        jvm_dll = base / "java" / "darwin64" / "jre" / "lib" / "server" / "libjvm.dylib"
-    else:
-        jvm_dll = base / "java" / "glnxa64" / "jre" / "lib" / "amd64" / "server" / "libjvm.so"
-    if jvm_dll.exists():
-        return str(jvm_dll.resolve())
-    return None
+    return resolve_comsol_jvm_path(settings.comsol_jar_path)
 
 
 def _build_classpath(jar_path: str) -> str:
@@ -112,13 +76,18 @@ class COMSOLRunner:
 
         logger.info("启动 JVM...")
         settings = get_settings()
+        platform_info = get_platform_info()
+        logger.info("当前平台: %s (%s)", platform_info.label, platform_info.platform_id)
+        unsupported = unsupported_platform_message(platform_info)
+        if unsupported:
+            logger.warning(unsupported)
         if not settings.comsol_jar_path:
             raise RuntimeError("COMSOL JAR 路径未配置，请设置 COMSOL_JAR_PATH")
 
         classpath = _build_classpath(settings.comsol_jar_path)
         comsol_jvm = _get_comsol_jvm_path(settings)
         if comsol_jvm:
-            java_home = str(Path(comsol_jvm).resolve().parent.parent.parent)
+            java_home = java_home_from_jvm(comsol_jvm)
             logger.info("使用 COMSOL 自带 JRE: %s", java_home)
         else:
             java_home = ensure_bundled_java()
@@ -126,18 +95,19 @@ class COMSOLRunner:
         jvm_args = [f"-Djava.class.path={classpath}", f"-Djava.home={java_home}"]
 
         native_path = _resolve_comsol_native_path(settings)
-        path_sep = ";" if os.name == "nt" else ":"
         if native_path:
             jvm_args.append(f"-Djava.library.path={native_path}")
-            old_path = os.environ.get("PATH", "")
-            if native_path not in old_path:
-                os.environ["PATH"] = native_path + path_sep + old_path
+            apply_native_library_env(native_path, info=platform_info)
             logger.info("COMSOL 本地库路径: %s", native_path)
+        elif platform_info.system == "Darwin" and platform_info.machine == "arm64":
+            logger.warning(
+                "未找到 macarm64 本地库。Apple Silicon 需要 COMSOL 6.3 原生安装包中的 "
+                "lib/macarm64 与 bin/macarm64，不能使用 Intel（maci64）目录。"
+            )
         if comsol_jvm:
-            jre_bin = Path(comsol_jvm).resolve().parent.parent
+            jre_bin = Path(java_home) / "bin"
             if jre_bin.exists():
-                prepend = str(jre_bin) + path_sep + os.environ.get("PATH", "")
-                os.environ["PATH"] = prepend
+                apply_native_library_env(str(jre_bin.resolve()), info=platform_info)
 
         try:
             jpype = _jpype()

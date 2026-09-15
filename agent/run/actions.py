@@ -1602,7 +1602,7 @@ def do_doctor(verbose: bool = False) -> Tuple[bool, str]:
     lines = [f"各后端配置状态: {status}", ""]
     lines.append(
         "内置 claw-code: "
-        + ("已启用" if getattr(settings, "claw_code_enabled", True) else "已禁用")
+        + ("已启用" if getattr(settings, "claw_code_enabled", False) else "已禁用")
         + f"，模型: {settings.claw_code_model or settings.get_model_for_backend(settings.llm_backend)}"
     )
     lines.append("")
@@ -1793,14 +1793,14 @@ def do_config_save(env_updates: Optional[dict] = None) -> Tuple[bool, str]:
 
 
 def _with_claw_code_llm_defaults(env_updates: dict) -> dict:
-    """Keep embedded claw-code model config aligned with the selected desktop backend."""
+    """Align opt-in claw-code LLM keys with the selected desktop backend.
+
+    Does not write or override ``CLAW_CODE_ENABLED``; modeling defaults to local Java API.
+    """
 
     backend = str(env_updates.get("LLM_BACKEND") or "").strip()
     if not backend:
         return env_updates
-
-    if "CLAW_CODE_ENABLED" not in env_updates:
-        env_updates["CLAW_CODE_ENABLED"] = "1"
 
     if backend == "deepseek":
         env_updates.setdefault("CLAW_CODE_MODEL", env_updates.get("DEEPSEEK_MODEL", ""))
