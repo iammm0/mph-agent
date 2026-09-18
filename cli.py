@@ -102,59 +102,7 @@ def _print_help() -> None:
         "  uv run python cli.py                       启动桌面（有 release exe 时优先用它）\n"
         "  uv run python cli.py dev                   强制 Tauri+Vite 开发模式（新前端）\n"
         "  uv run python cli.py tui-bridge            内部子进程入口（Tauri 调用）\n"
-        "  uv run python cli.py parity                打印 clawcode parity 审计结果\n"
-        "  uv run python cli.py workflow [name]       列出/查看 .claw-workflows.json 工作流\n"
-        "  uv run python cli.py sub-agents-sync       将 planner 子 Agent 写入 .claude/agents/*.md\n"
     )
-
-
-def _run_parity_command() -> int:
-    import json as _json
-
-    from agent.run.actions import do_parity
-
-    ok, msg, payload = do_parity(verbose=False)
-    print(payload.get("markdown") or "")
-    print()
-    print("commands ported:", payload.get("commands", {}).get("ported_count", 0))
-    print("tools ported   :", payload.get("tools", {}).get("ported_count", 0))
-    if not ok:
-        sys.stderr.write(f"parity failed: {msg}\n")
-    return 0 if ok else 1
-
-
-def _run_workflow_command(name: str | None) -> int:
-    import json as _json
-
-    from agent.run.actions import do_workflow
-
-    ok, msg, payload = do_workflow(workflow_name=name, verbose=False)
-    if not ok:
-        sys.stderr.write(f"workflow query failed: {msg}\n")
-        return 1
-    if name:
-        print(_json.dumps(payload.get("workflow"), ensure_ascii=False, indent=2))
-    else:
-        items = payload.get("items") or []
-        for item in items:
-            steps = ", ".join(
-                str(step.get("name") or step.get("title") or "")
-                for step in item.get("steps", [])
-            )
-            print(f"- {item.get('name')}: {item.get('description') or ''}")
-            if steps:
-                print(f"  steps: {steps}")
-    return 0
-
-
-def _run_sub_agents_sync() -> int:
-    from agent.run.actions import do_sub_agents_sync
-
-    ok, msg, payload = do_sub_agents_sync(verbose=False)
-    print(msg)
-    for path in payload.get("files", []):
-        print(f"  {path}")
-    return 0 if ok else 1
 
 
 def main() -> None:
@@ -186,16 +134,6 @@ def main() -> None:
 
         bridge_main()
         return
-
-    if args[0] == "parity":
-        sys.exit(_run_parity_command())
-
-    if args[0] == "workflow":
-        target = args[1] if len(args) >= 2 else None
-        sys.exit(_run_workflow_command(target))
-
-    if args[0] == "sub-agents-sync":
-        sys.exit(_run_sub_agents_sync())
 
     _print_help()
     sys.exit(1)

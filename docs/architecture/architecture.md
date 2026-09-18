@@ -243,7 +243,7 @@ flowchart TB
 | **运行模式** | 讨论模式、计划模式（含澄清问题循环） | `agent/run/discussion_mode.py`、`agent/run/plan_mode.py` |
 | **ReAct 核心** | 推理、执行、观察、迭代 | `agent/react/react_agent.py`、`reasoning_engine.py`、`action_executor.py`、`observer.py`、`iteration_controller.py` |
 | **Planner** | 自然语言 → 结构化计划；编排器串行调用四类 Agent、A2A 共享上下文 | `agent/planner/orchestrator.py`、`agent/planner/context.py`、`agent/planner/geometry_agent.py`、`physics_agent.py`、`study_agent.py`、`material_agent.py` |
-| **Executor** | 计划 → COMSOL 调用 / .mph | `agent/executor/comsol_runner.py`、`agent/executor/java_api_controller.py`、`agent/executor/comsol_official_api_wrappers.py`、`agent/executor/comsol_ops_cli.py`；可选 `agent/executor/clawcode_dispatcher.py` |
+| **Executor** | 计划 → COMSOL 调用 / .mph | `agent/executor/comsol_runner.py`、`agent/executor/java_api_controller.py`、`agent/executor/comsol_official_api_wrappers.py`、`agent/executor/comsol_ops_cli.py` |
 | **Q&A / Summary** | 问答与结果摘要 | `agent/agents/qa_agent.py`、`agent/agents/summary_agent.py` |
 | **事件与上下文** | EventBus、会话上下文、记忆 | `agent/core/events.py`、`agent/utils/context_manager.py`、`agent/memory/memory_agent.py` |
 | **技能与提示** | 技能加载、向量检索注入、提示模板、LLM | `agent/skills/`、`agent/utils/prompt_loader.py`、`agent/utils/llm.py` |

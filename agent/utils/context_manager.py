@@ -885,29 +885,7 @@ class ContextManager:
                 lines.append("Current plan status")
                 lines.extend(f"- {line}" for line in plan_lines)
 
-        clawcode_block = self._render_clawcode_runtime_snapshot()
-        if clawcode_block:
-            if lines:
-                lines.append("")
-            lines.append(clawcode_block)
-
         return "\n".join(lines)
-
-    @staticmethod
-    def _render_clawcode_runtime_snapshot() -> str:
-        """Append clawcode runtime status (PlanRuntime/MCP/Workflow…) when available."""
-        try:
-            from agent.clawcode_bridge.mcp_plugin import (
-                render_dispatcher_context_block,
-            )
-            from agent.utils.config import get_project_root
-        except Exception:
-            return ""
-        try:
-            block = render_dispatcher_context_block(get_project_root())
-        except Exception:
-            return ""
-        return block.strip()
 
     # ---- Misc ----
 

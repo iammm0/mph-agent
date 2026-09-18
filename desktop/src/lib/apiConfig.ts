@@ -678,10 +678,6 @@ export function apiConfigToEnv(config: ApiConfig): Record<string, string> {
     OPENAI_COMPATIBLE_MODEL: "",
     OLLAMA_URL: "",
     OLLAMA_MODEL: "",
-    CLAW_CODE_ENABLED: "0",
-    CLAW_CODE_MODEL: "",
-    CLAW_CODE_BASE_URL: "",
-    CLAW_CODE_API_KEY: "",
   };
 
   const providerId = config.preferred_backend;
@@ -695,31 +691,19 @@ export function apiConfigToEnv(config: ApiConfig): Record<string, string> {
     case "deepseek":
       env.DEEPSEEK_API_KEY = provider.api_key;
       env.DEEPSEEK_MODEL = provider.model;
-      env.CLAW_CODE_MODEL = provider.model;
-      env.CLAW_CODE_BASE_URL = "https://api.deepseek.com/v1";
-      env.CLAW_CODE_API_KEY = provider.api_key;
       break;
     case "kimi":
       env.KIMI_API_KEY = provider.api_key;
       env.KIMI_MODEL = provider.model;
-      env.CLAW_CODE_MODEL = provider.model;
-      env.CLAW_CODE_BASE_URL = "https://api.moonshot.cn/v1";
-      env.CLAW_CODE_API_KEY = provider.api_key;
       break;
     case "openai-compatible":
       env.OPENAI_COMPATIBLE_BASE_URL = provider.base_url;
       env.OPENAI_COMPATIBLE_API_KEY = provider.api_key;
       env.OPENAI_COMPATIBLE_MODEL = provider.model;
-      env.CLAW_CODE_MODEL = provider.model;
-      env.CLAW_CODE_BASE_URL = provider.base_url;
-      env.CLAW_CODE_API_KEY = provider.api_key;
       break;
     case "ollama":
       env.OLLAMA_URL = provider.base_url;
       env.OLLAMA_MODEL = provider.model;
-      env.CLAW_CODE_MODEL = provider.model;
-      env.CLAW_CODE_BASE_URL = `${provider.base_url.replace(/\/+$/, "")}/v1`;
-      env.CLAW_CODE_API_KEY = "local-token";
       break;
     default:
       break;

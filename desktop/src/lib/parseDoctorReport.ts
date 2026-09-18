@@ -7,9 +7,6 @@ import type { AssistantPresentation } from "./types";
 export interface DoctorReport {
   outcome: "pass" | "fail";
   backendStatusLine: string | null;
-  clawCodeLine: string | null;
-  /** parity 小节原文行（含「clawcode parity 概览」或报告失败行） */
-  parityLines: string[];
   errors: string[];
   warnings: string[];
   infos: string[];
@@ -62,38 +59,17 @@ export function parseDoctorReportText(text: string): DoctorReport | null {
   }
 
   let backendStatusLine: string | null = null;
-  let clawCodeLine: string | null = null;
-  const parityStart = headerLines.findIndex(
-    (l) =>
-      l.trim().startsWith("clawcode parity") || l.trim().startsWith("clawcode parity 报告失败")
-  );
-
-  if (parityStart >= 0) {
-    for (let i = 0; i < parityStart; i++) {
-      const t = headerLines[i].trim();
-      if (!t) continue;
-      if (t.startsWith("各后端配置状态")) backendStatusLine = t;
-      else if (t.startsWith("内置 claw-code")) clawCodeLine = t;
-    }
-  } else {
-    for (const line of headerLines) {
-      const t = line.trim();
-      if (!t) continue;
-      if (t.startsWith("各后端配置状态")) backendStatusLine = t;
-      else if (t.startsWith("内置 claw-code")) clawCodeLine = t;
+  for (const line of headerLines) {
+    const t = line.trim();
+    if (t.startsWith("各后端配置状态")) {
+      backendStatusLine = t;
+      break;
     }
   }
-
-  const parityLines =
-    parityStart >= 0
-      ? headerLines.slice(parityStart).map((l) => l.trimEnd())
-      : [];
 
   return {
     outcome,
     backendStatusLine,
-    clawCodeLine,
-    parityLines,
     errors,
     warnings,
     infos,

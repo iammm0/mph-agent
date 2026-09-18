@@ -60,7 +60,7 @@ include = ["agent*"]
 
 [tool.setuptools.package-data]
 agent = ["*.txt", "*.md", "prompts/**/*.txt", "skills/library/**/*.md"]
-"agent.clawcode" = ["reference_data/*.json", "gui/static/*"]
+"agent.clawcode" = ["reference_data/*.json"]
 
 [tool.black]
 line-length = 100

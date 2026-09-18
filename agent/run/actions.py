@@ -1,6 +1,5 @@
 """无 Typer 依赖的纯函数：供 TUI 与 CLI 子命令共用的 do_run、do_plan、do_exec 等。"""
 import asyncio
-import contextlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,14 +12,6 @@ from agent.case_library import (
     list_case_library_items,
     load_case_library,
 )
-from agent.clawcode_bridge import (
-    ensure_default_workflow_manifest,
-    ensure_sub_agent_definitions,
-    list_workflow_definitions,
-    seed_ask_user_runtime,
-    worktree_session,
-)
-from agent.clawcode_bridge.parity import render_parity_report
 from agent.doc_knowledge import (
     get_default_doc_kb_path,
     import_comsol_docs,
@@ -298,15 +289,8 @@ def do_run(
     event_bus: Optional[EventBus] = None,
     clarifying_answers: Optional[list[dict[str, Any]]] = None,
     given_plan: Optional[Dict[str, Any]] = None,
-    use_worktree: bool = False,
-    worktree_name: Optional[str] = None,
 ) -> Tuple[bool, str, bool]:
-    """执行默认模式：自然语言 -> 创建模型。given_plan 非空时（Plan 模式进入）直接使用该计划，跳过编排。
-
-    ``use_worktree=True`` 时会通过 ``WorktreeRuntime`` 在仓库旁创建一个 git worktree
-    隔离本次建模执行（保留产物，不污染主分支）。worktree 内的 ``.port_sessions/``
-    与 ``.context/`` 都独立。
-    """
+    """执行默认模式：自然语言 -> 创建模型。given_plan 非空时（Plan 模式进入）直接使用该计划，跳过编排。"""
     _ensure_logging(verbose)
     from agent.utils.env_check import validate_environment
 
@@ -369,41 +353,6 @@ def do_run(
         },
     )
 
-    # 可选：用 git worktree 隔离本次建模执行
-    worktree_stack = contextlib.ExitStack()
-    worktree_report = None
-    if use_worktree:
-        try:
-            from agent.utils.config import get_project_root
-
-            worktree_report = worktree_stack.enter_context(
-                worktree_session(
-                    get_project_root(), name=worktree_name, cleanup_action="keep"
-                )
-            )
-            if event_bus is not None:
-                event_bus.emit_type(
-                    EventType.WORKTREE_ENTERED,
-                    {
-                        "active": worktree_report.active,
-                        "session_name": worktree_report.session_name,
-                        "worktree_path": worktree_report.worktree_path,
-                        "worktree_branch": worktree_report.worktree_branch,
-                        "detail": worktree_report.detail,
-                    },
-                )
-            log_action(
-                "worktree_entered",
-                data={
-                    "active": worktree_report.active,
-                    "session_name": worktree_report.session_name,
-                    "worktree_path": worktree_report.worktree_path,
-                },
-            )
-        except Exception as exc:
-            log_action("worktree_enter_failed", detail=str(exc), level="WARNING")
-            worktree_report = None
-
     try:
         if use_react:
             if workspace_dir:
@@ -455,24 +404,6 @@ def do_run(
                     "validated_count": len(clarifying_models or []),
                 },
             )
-
-            # 把 clarifying_answers 同步到 AskUserRuntime 队列，方便 LocalCodingAgent
-            # 在 dispatcher 内部调用 ask_user 工具时复用，并支持离线 .claw-ask-user.json 回放
-            if clarifying_models:
-                try:
-                    from agent.utils.config import get_project_root
-
-                    seed_ask_user_runtime(get_project_root(), clarifying_models)
-                    log_action(
-                        "ask_user_runtime_seeded",
-                        data={"count": len(clarifying_models)},
-                    )
-                except Exception as exc:  # pragma: no cover
-                    log_action(
-                        "ask_user_runtime_failed",
-                        detail=str(exc),
-                        level="WARNING",
-                    )
 
             try:
                 model_path = core.run(
@@ -615,84 +546,6 @@ def do_run(
             _update_memory_after_run(conversation_id, user_input, str(e), False)
         finish_log(False, str(e), {"exception_type": type(e).__name__})
         return False, str(e), False
-    finally:
-        try:
-            worktree_stack.close()
-            if worktree_report is not None and event_bus is not None:
-                event_bus.emit_type(
-                    EventType.WORKTREE_EXITED,
-                    {
-                        "session_name": worktree_report.session_name,
-                        "worktree_path": worktree_report.worktree_path,
-                    },
-                )
-        except Exception as exc:  # pragma: no cover
-            log_action("worktree_exit_failed", detail=str(exc), level="WARNING")
-
-
-def do_workflow(
-    workflow_name: Optional[str] = None,
-    *,
-    verbose: bool = False,
-) -> Tuple[bool, str, Dict[str, Any]]:
-    """暴露 ``WorkflowRuntime`` 的查询能力。
-
-    - 不传 ``workflow_name``：返回所有 workflow 定义（含步骤、metadata）。
-    - 传入 ``workflow_name``：返回指定 workflow 的渲染信息。
-
-    实际执行仍走 ``do_run`` / ReActAgent；这里只暴露 manifest 视图，便于
-    桌面端展示「mph-agent 标准建模管线」。
-    """
-
-    _ensure_logging(verbose)
-    try:
-        from agent.utils.config import get_project_root
-
-        project_root = get_project_root()
-        ensure_default_workflow_manifest(project_root)
-        items = list_workflow_definitions(project_root)
-        if workflow_name:
-            wf = next(
-                (item for item in items if item.get("name") == workflow_name),
-                None,
-            )
-            if wf is None:
-                return False, f"未找到 workflow: {workflow_name}", {"items": items}
-            return True, "ok", {"workflow": wf, "items": items}
-        return True, "ok", {"items": items}
-    except Exception as exc:
-        logger.exception("do_workflow 失败")
-        return False, str(exc), {"items": []}
-
-
-def do_parity(verbose: bool = False) -> Tuple[bool, str, Dict[str, Any]]:
-    """运行 clawcode parity_audit，并返回 commands/tools 端口清单。"""
-
-    _ensure_logging(verbose)
-    try:
-        report = render_parity_report(include_backlog=True)
-        return True, "ok", report
-    except Exception as exc:
-        logger.exception("do_parity 失败")
-        return False, str(exc), {}
-
-
-def do_sub_agents_sync(verbose: bool = False) -> Tuple[bool, str, Dict[str, Any]]:
-    """把 mph-agent 的 planner 子 Agent 写到 ``.claude/agents/*.md``。"""
-
-    _ensure_logging(verbose)
-    try:
-        from agent.utils.config import get_project_root
-
-        files = ensure_sub_agent_definitions(get_project_root())
-        return (
-            True,
-            f"已写入 {len(files)} 个子 agent 定义",
-            {"files": [str(p) for p in files]},
-        )
-    except Exception as exc:
-        logger.exception("do_sub_agents_sync 失败")
-        return False, str(exc), {}
 
 
 def do_plan_mode(
@@ -1600,36 +1453,6 @@ def do_doctor(verbose: bool = False) -> Tuple[bool, str]:
     status = settings.show_config_status()
     result = check_environment()
     lines = [f"各后端配置状态: {status}", ""]
-    lines.append(
-        "内置 claw-code: "
-        + ("已启用" if getattr(settings, "claw_code_enabled", False) else "已禁用")
-        + f"，模型: {settings.claw_code_model or settings.get_model_for_backend(settings.llm_backend)}"
-    )
-    lines.append("")
-    try:
-        report = render_parity_report(include_backlog=True)
-        lines.append("clawcode parity 概览:")
-        lines.append(
-            "- 文件覆盖: {}/{}; 命令端口: {}/{}; 工具端口: {}/{}".format(
-                *report.get("total_file_ratio", (0, 0)),
-                *report.get("command_entry_ratio", (0, 0)),
-                *report.get("tool_entry_ratio", (0, 0)),
-            )
-        )
-        if report.get("missing_directory_targets"):
-            lines.append(
-                "- 待补齐目录: " + ", ".join(report["missing_directory_targets"][:6])
-            )
-        commands_block = report.get("commands") or {}
-        tools_block = report.get("tools") or {}
-        lines.append(
-            f"- 已 ported 命令数: {commands_block.get('ported_count', 0)}; "
-            f"工具数: {tools_block.get('ported_count', 0)}"
-        )
-        lines.append("")
-    except Exception as exc:
-        lines.append(f"clawcode parity 报告失败: {exc}")
-        lines.append("")
     if result.is_valid():
         lines.append("环境检查通过")
     else:
@@ -1750,14 +1573,8 @@ def do_config_save(env_updates: Optional[dict] = None) -> Tuple[bool, str]:
         "COMSOL_JAR_PATH",
         "JAVA_HOME",
         "MODEL_OUTPUT_DIR",
-        "CLAW_CODE_ENABLED",
-        "CLAW_CODE_MAX_TURNS",
-        "CLAW_CODE_TIMEOUT_SECONDS",
-        "CLAW_CODE_MODEL",
-        "CLAW_CODE_BASE_URL",
-        "CLAW_CODE_API_KEY",
     ]
-    env_updates = _with_claw_code_llm_defaults(dict(env_updates))
+    env_updates = dict(env_updates)
     # 读取已有行
     if env_path.exists():
         lines_out = env_path.read_text(encoding="utf-8").splitlines()
@@ -1790,38 +1607,6 @@ def do_config_save(env_updates: Optional[dict] = None) -> Tuple[bool, str]:
         return True, "配置已保存并已加载，将应用于后续 mph-agent 调用"
     except Exception as e:
         return False, f"写入 .env 失败: {e}"
-
-
-def _with_claw_code_llm_defaults(env_updates: dict) -> dict:
-    """Align opt-in claw-code LLM keys with the selected desktop backend.
-
-    Does not write or override ``CLAW_CODE_ENABLED``; modeling defaults to local Java API.
-    """
-
-    backend = str(env_updates.get("LLM_BACKEND") or "").strip()
-    if not backend:
-        return env_updates
-
-    if backend == "deepseek":
-        env_updates.setdefault("CLAW_CODE_MODEL", env_updates.get("DEEPSEEK_MODEL", ""))
-        env_updates.setdefault("CLAW_CODE_BASE_URL", "https://api.deepseek.com/v1")
-        env_updates.setdefault("CLAW_CODE_API_KEY", env_updates.get("DEEPSEEK_API_KEY", ""))
-    elif backend == "kimi":
-        env_updates.setdefault("CLAW_CODE_MODEL", env_updates.get("KIMI_MODEL", ""))
-        env_updates.setdefault("CLAW_CODE_BASE_URL", "https://api.moonshot.cn/v1")
-        env_updates.setdefault("CLAW_CODE_API_KEY", env_updates.get("KIMI_API_KEY", ""))
-    elif backend == "openai-compatible":
-        env_updates.setdefault("CLAW_CODE_MODEL", env_updates.get("OPENAI_COMPATIBLE_MODEL", ""))
-        env_updates.setdefault(
-            "CLAW_CODE_BASE_URL", env_updates.get("OPENAI_COMPATIBLE_BASE_URL", "")
-        )
-        env_updates.setdefault("CLAW_CODE_API_KEY", env_updates.get("OPENAI_COMPATIBLE_API_KEY", ""))
-    elif backend == "ollama":
-        ollama_url = str(env_updates.get("OLLAMA_URL") or "http://localhost:11434").rstrip("/")
-        env_updates.setdefault("CLAW_CODE_MODEL", env_updates.get("OLLAMA_MODEL", ""))
-        env_updates.setdefault("CLAW_CODE_BASE_URL", f"{ollama_url}/v1")
-        env_updates.setdefault("CLAW_CODE_API_KEY", "local-token")
-    return env_updates
 
 
 def do_conversation_title_suggest(

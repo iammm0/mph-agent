@@ -50,7 +50,6 @@ agent/
 ├── executor/           # 执行层：计划 → COMSOL 调用 / Java 代码
 │   ├── comsol_runner.py    # 启动 JVM、调用 COMSOL Java API、保存 .mph
 │   ├── java_api_controller.py  # Java API 封装与调用
-│   ├── clawcode_dispatcher.py  # 可选：少数扩展动作的 claw-code 调度
 │   └── comsol_ops_cli.py       # COMSOL 操作 CLI 与调试入口
 │
 ├── skills/             # 技能/隐性知识：加载与注入

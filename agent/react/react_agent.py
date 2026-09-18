@@ -111,24 +111,12 @@ class ReActAgent:
             pass
 
     def _run_end_success_and_message(self, plan: ReActTaskPlan) -> tuple[bool, str]:
-        """计算 RUN_END 的 success 与 message。
-
-        启用 claw-code 时，外层 ReAct 轮次用尽但末轮观察已为 success 的情况较常见：
-        以末次观察文案为准，不再误报「达到最大调整次数」。
-        """
-        settings = get_settings()
+        """计算 RUN_END 的 success 与 message。"""
         if plan.status == "completed":
             tail = (plan.error or "").strip()
             return True, tail or "已完成"
         if plan.status == "failed":
             return False, (plan.error or "任务失败").strip()
-        if settings.claw_code_enabled and plan.observations:
-            last = plan.observations[-1]
-            text = (last.message or "").strip()
-            if last.status == "success" and text:
-                return True, text
-            if text:
-                return (last.status != "error"), text
         if plan.error:
             return False, plan.error.strip()
         return False, f"任务未完成（已达到最大调整次数: {self.max_iterations}）"
@@ -345,7 +333,7 @@ class ReActAgent:
         if plan.status != "completed":
             if end_success:
                 if final_path and Path(final_path).exists():
-                    logger.info("以外层末次观察为准结束（claw-code 已启用）")
+                    logger.info("以外层末次观察为准结束")
                     return Path(final_path)
                 raise RuntimeError(end_message or "模型文件未生成")
             base_msg = end_message or "任务失败"

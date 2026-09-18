@@ -1,7 +1,6 @@
 """ReAct 架构测试"""
 
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
@@ -159,10 +158,9 @@ class TestActionExecutor:
         assert result.get("status") == "error"
         assert "未知" in result.get("message", "")
 
-    def test_execute_import_geometry_uses_local_java_api_by_default(self):
-        """默认关闭 claw-code 时，import_geometry 走本地 JavaAPIController。"""
+    def test_execute_import_geometry_uses_local_java_api(self):
+        """import_geometry 走本地 JavaAPIController。"""
         executor = ActionExecutor()
-        executor.settings.claw_code_enabled = False
         plan = ReActTaskPlan(task_id="t1", model_name="m1", user_input="u1")
         plan.model_path = "/tmp/model.mph"
         step = ExecutionStep(
@@ -172,8 +170,6 @@ class TestActionExecutor:
             parameters={"file_path": "/x.step"},
             status="pending",
         )
-        dispatcher = Mock()
-        executor._clawcode_dispatcher = dispatcher
         controller = Mock()
         controller.import_geometry.return_value = {
             "status": "success",
@@ -186,12 +182,10 @@ class TestActionExecutor:
         assert result.get("status") == "success"
         assert plan.model_path == "/tmp/imported.mph"
         controller.import_geometry.assert_called_once()
-        dispatcher.dispatch.assert_not_called()
 
-    def test_execute_export_results_uses_local_java_api_by_default(self):
-        """默认关闭 claw-code 时，export_results 走本地 JavaAPIController。"""
+    def test_execute_export_results_uses_local_java_api(self):
+        """export_results 走本地 JavaAPIController。"""
         executor = ActionExecutor()
-        executor.settings.claw_code_enabled = False
         plan = ReActTaskPlan(task_id="t2", model_name="m2", user_input="u2")
         plan.model_path = "/tmp/model.mph"
         step = ExecutionStep(
@@ -201,8 +195,6 @@ class TestActionExecutor:
             parameters={"out_path": "/out.png"},
             status="pending",
         )
-        dispatcher = Mock()
-        executor._clawcode_dispatcher = dispatcher
         controller = Mock()
         controller.export_plot_image.return_value = {
             "status": "success",
@@ -214,79 +206,6 @@ class TestActionExecutor:
         assert result.get("status") == "success"
         assert result.get("path") == "/out.png"
         controller.export_plot_image.assert_called_once()
-        dispatcher.dispatch.assert_not_called()
-
-    def test_execute_import_geometry_delegates_to_clawcode_when_enabled(self):
-        """CLAW_CODE_ENABLED=1 时，import_geometry 交给 dispatcher。"""
-        executor = ActionExecutor()
-        executor.settings.claw_code_enabled = True
-        plan = ReActTaskPlan(task_id="t1", model_name="m1", user_input="u1")
-        step = ExecutionStep(
-            step_id="s1",
-            step_type="geometry_io",
-            action="import_geometry",
-            parameters={"file_path": "/x.step"},
-            status="pending",
-        )
-        dispatcher = Mock()
-        dispatcher.dispatch.return_value = {
-            "status": "success",
-            "message": "ok",
-            "model_path": "/tmp/imported.mph",
-        }
-        executor._clawcode_dispatcher = dispatcher
-
-        result = executor.execute(plan, step, {"parameters": {"file_path": "/x.step"}})
-        assert result.get("status") == "success"
-        assert plan.model_path == "/tmp/imported.mph"
-        dispatcher.dispatch.assert_called_once()
-
-    def test_execute_export_results_delegates_to_clawcode_when_enabled(self):
-        """CLAW_CODE_ENABLED=1 时，export_results 交给 dispatcher。"""
-        executor = ActionExecutor()
-        executor.settings.claw_code_enabled = True
-        plan = ReActTaskPlan(task_id="t2", model_name="m2", user_input="u2")
-        step = ExecutionStep(
-            step_id="s1",
-            step_type="postprocess",
-            action="export_results",
-            parameters={"out_path": "/out.png"},
-            status="pending",
-        )
-        dispatcher = Mock()
-        dispatcher.dispatch.return_value = {
-            "status": "success",
-            "message": "exported",
-            "artifacts": ["/out.png"],
-        }
-        executor._clawcode_dispatcher = dispatcher
-
-        result = executor.execute(plan, step, {"parameters": {"out_path": "/out.png"}})
-        assert result.get("status") == "success"
-        assert result.get("artifacts") == ["/out.png"]
-        dispatcher.dispatch.assert_called_once()
-
-    def test_execute_clawcode_error_is_collected(self):
-        """opt-in 委托失败时收集结构化错误。"""
-        error_collector = Mock()
-        executor = ActionExecutor(error_collector=error_collector)
-        executor.settings.claw_code_enabled = True
-        plan = ReActTaskPlan(task_id="t3", model_name="m3", user_input="u3")
-        step = ExecutionStep(
-            step_id="s1",
-            step_type="geometry_io",
-            action="import_geometry",
-            status="pending",
-        )
-        dispatcher = Mock()
-        dispatcher.dispatch.return_value = {"status": "error", "message": "failed"}
-        executor._clawcode_dispatcher = dispatcher
-
-        result = executor.execute(plan, step, {"parameters": {"file_path": "/x.step"}})
-
-        assert result["status"] == "error"
-        error_collector.submit.assert_called_once()
-        assert error_collector.submit.call_args.args[1] == "clawcode_dispatch_error"
 
     def test_execute_define_globals_validation_failed(self):
         """define_globals 参数校验失败时返回结构化错误并要求回到规划澄清。"""
@@ -428,9 +347,9 @@ class TestActionExecutor:
 
 
 class TestConfigSync:
-    """测试桌面端配置与内置 claw-code 后端保持一致。"""
+    """测试桌面端配置写入 .env。"""
 
-    def test_config_save_sets_claw_code_openai_compatible_defaults(self, tmp_path, monkeypatch):
+    def test_config_save_writes_openai_compatible_keys(self, tmp_path, monkeypatch):
         from agent.utils import config as config_mod
 
         monkeypatch.setattr(config_mod, "get_project_root", lambda: tmp_path)
@@ -447,10 +366,11 @@ class TestConfigSync:
 
         assert ok is True, message
         env_text = (tmp_path / ".env").read_text(encoding="utf-8")
-        assert "CLAW_CODE_ENABLED=" not in env_text
-        assert "CLAW_CODE_MODEL=gpt-test" in env_text
-        assert "CLAW_CODE_BASE_URL=https://example.test/v1" in env_text
-        assert "CLAW_CODE_API_KEY=sk-test" in env_text
+        assert "LLM_BACKEND=openai-compatible" in env_text
+        assert "OPENAI_COMPATIBLE_MODEL=gpt-test" in env_text
+        assert "OPENAI_COMPATIBLE_BASE_URL=https://example.test/v1" in env_text
+        assert "OPENAI_COMPATIBLE_API_KEY=sk-test" in env_text
+        assert "CLAW_CODE_" not in env_text
 
 
 class TestObserver:
@@ -731,39 +651,10 @@ class TestReActAgent:
         )
         assert agent._is_all_steps_complete(plan) is False
 
-    def test_run_end_success_and_message_clawcode_trusts_last_observation(self, monkeypatch):
-        """启用 claw-code 时，以外层末次成功观察为准，不再套用「达到最大调整次数」。"""
-        agent = ReActAgent(llm=Mock())
-        monkeypatch.setattr(
-            "agent.react.react_agent.get_settings",
-            lambda: SimpleNamespace(claw_code_enabled=True),
-        )
-        plan = ReActTaskPlan(
-            task_id="t_cc",
-            model_name="m_cc",
-            user_input="u_cc",
-            status="executing",
-            observations=[
-                Observation(
-                    observation_id="o_cc",
-                    step_id="s_cc",
-                    status="success",
-                    message="研究配置成功",
-                ),
-            ],
-        )
-        ok, msg = agent._run_end_success_and_message(plan)
-        assert ok is True
-        assert msg == "研究配置成功"
-
-    def test_run_end_success_and_message_without_clawcode_generic_incomplete(self, monkeypatch):
-        """未启用 claw-code 时，非 completed 仍回落到轮次用尽提示。"""
+    def test_run_end_success_and_message_incomplete_uses_iteration_limit(self):
+        """非 completed 回落到轮次用尽提示。"""
         agent = ReActAgent(llm=Mock())
         agent.max_iterations = 10
-        monkeypatch.setattr(
-            "agent.react.react_agent.get_settings",
-            lambda: SimpleNamespace(claw_code_enabled=False),
-        )
         plan = ReActTaskPlan(
             task_id="t_nc",
             model_name="m_nc",

@@ -89,16 +89,6 @@ export function DoctorDiagnosisCard({
           {report.backendStatusLine && (
             <p className="doctor-diagnosis__lead">{report.backendStatusLine}</p>
           )}
-          {report.clawCodeLine && (
-            <p className="doctor-diagnosis__sub">{report.clawCodeLine}</p>
-          )}
-
-          {report.parityLines.length > 0 && (
-            <section className="doctor-diagnosis__parity-wrap">
-              <h4 className="doctor-diagnosis__section-label">claw-code 移植覆盖（可选）</h4>
-              <pre className="doctor-diagnosis__parity">{report.parityLines.join("\n")}</pre>
-            </section>
-          )}
 
           <ListBlock title="错误" variant="error" items={report.errors} />
           <ListBlock title="警告" variant="warning" items={report.warnings} />
