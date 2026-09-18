@@ -34,7 +34,7 @@ if (isWin) {
     "-File",
     "scripts/download-jdk11.ps1",
   ]);
-  run(npm, ["run", "tauri", "--", "build", "--bundles", "nsis,msi"]);
+  run(npm, ["run", "tauri", "--", "build", "--bundles", "nsis"]);
 } else if (os.platform() === "darwin") {
   if (os.arch() !== "arm64") {
     console.error(

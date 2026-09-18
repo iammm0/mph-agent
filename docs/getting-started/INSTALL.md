@@ -137,7 +137,7 @@ MODEL_OUTPUT_DIR=/path/to/output
 
 桌面应用当前提供：
 
-- **Windows x64（AMD64）**：exe / msi
+- **Windows x64（AMD64）**：NSIS exe
 - **macOS Apple Silicon**：dmg
 
 从 [GitHub Releases](https://github.com/iammm0/mph-agent/releases) 下载。暂不支持 Linux、Windows ARM 与 macOS Intel。

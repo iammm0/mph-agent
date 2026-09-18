@@ -62,8 +62,23 @@ for item in "$TOP_LEVEL"/*; do
 done
 shopt -u dotglob
 
+# Adoptium macOS tarball uses Contents/Home/bin/java, not bin/java at the root.
+if [[ ! -x "$TARGET_DIR/bin/java" && -x "$TARGET_DIR/Contents/Home/bin/java" ]]; then
+  HOME_DIR="$TARGET_DIR/Contents/Home"
+  shopt -s dotglob
+  for item in "$HOME_DIR"/*; do
+    name="$(basename "$item")"
+    rm -rf "$TARGET_DIR/$name"
+    mv "$item" "$TARGET_DIR/$name"
+  done
+  shopt -u dotglob
+  rm -rf "$TARGET_DIR/Contents"
+fi
+
 if [[ ! -x "$TARGET_DIR/bin/java" ]]; then
   echo "After extract, bin/java not found under $TARGET_DIR" >&2
+  echo "Extracted layout:" >&2
+  find "$TARGET_DIR" -maxdepth 4 -print >&2 || true
   exit 1
 fi
 

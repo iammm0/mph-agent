@@ -46,7 +46,7 @@ mph-agent 是面向 **COMSOL Multiphysics 6.3** 的开源建模智能体。在�
 
 从 [GitHub Releases](https://github.com/iammm0/mph-agent/releases) 下载 `desktop-v*` 安装包：
 
-- Windows x64：exe 或 msi
+- Windows x64：exe（NSIS）
 - macOS Apple Silicon：dmg
 
 安装包已内置 Java 11，不必再装 Python 或 JDK。暂不提供 Linux、Windows ARM、macOS Intel。

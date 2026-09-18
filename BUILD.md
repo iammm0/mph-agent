@@ -4,7 +4,7 @@
 
 官方打包目标：
 
-- **Windows x64（AMD64）**：NSIS / MSI
+- **Windows x64（AMD64）**：NSIS（exe）
 - **macOS Apple Silicon**：DMG
 
 ## 最终安装程序包含内容
@@ -15,7 +15,7 @@
 | 前端桌面端 | Tauri + React 桌面应用 | 安装程序主程序 + 前端资源 |
 | 本地 Java 11 | 来自本地 `.venv/java11`（项目内置 JDK 11） | `desktop/src-tauri/resources/runtime/java`，并被打包进安装程序 |
 
-安装包生成目录：`desktop/src-tauri/target/release/bundle/`（Windows 为 `.exe` / `.msi`，macOS 为 `.dmg`）。
+安装包生成目录：`desktop/src-tauri/target/release/bundle/`（Windows 为 NSIS `.exe`，macOS 为 `.dmg`）。内嵌 JDK 后 WiX/MSI 会在 `light.exe` 阶段失败，因此官方包不再打 `.msi`。
 
 ---
 

@@ -19,7 +19,7 @@ jobs:
         include:
           - platform: windows-latest
             artifact: windows-x64
-            args: '--bundles nsis,msi'
+            args: '--bundles nsis'
           - platform: macos-latest
             artifact: macos-arm64
             args: '--bundles dmg'
@@ -146,7 +146,7 @@ jobs:
           name: Multiphysics Modeling Agent Desktop v${{ steps.version.outputs.version }}
           body: |
             安装包内含 Java 11。请按机器选择：
-            - Windows x64（AMD64）：exe / msi
+            - Windows x64（AMD64）：NSIS exe
             - macOS Apple Silicon：dmg
             See the assets below to download and install.
           draft: true
