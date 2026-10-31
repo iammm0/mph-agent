@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 
-const STORAGE_KEY = "mph-agent-theme";
+const STORAGE_KEY = "mph-agent-theme-v2";
 const LEGACY_STORAGE_KEY = "comsol-agent-theme";
 
 export type ThemeMode = "light" | "dark" | "system";
@@ -21,6 +21,7 @@ export function getSystemTheme(): ResolvedTheme {
 }
 
 export const ACCENT_PRESETS: { name: string; value: string }[] = [
+  { name: "克劳德橙", value: "#d97757" },
   { name: "暖金", value: "#dcc88a" },
   { name: "古铜", value: "#c89a4a" },
   { name: "苔绿", value: "#9ec48c" },
@@ -40,7 +41,7 @@ interface ThemeContextValue extends ThemeState {
 }
 
 const defaultState: ThemeState = {
-  themeMode: "light",
+  themeMode: "dark",
   accentColor: ACCENT_PRESETS[0].value,
 };
 

@@ -305,19 +305,22 @@ export function Prompt() {
             </div>
           )}
         </div>
-        <textarea
-          ref={textareaRef}
-          className="prompt-input"
-          rows={1}
-          placeholder="输入建模需求…（扩展功能请点击 +）"
-          value={value}
-          disabled={busy}
-          onChange={(e) => {
-            setValue(e.target.value);
-            autoResize();
-          }}
-          onKeyDown={handleKeyDown}
-        />
+        <div className="prompt-input-wrap">
+          <span className="prompt-glyph" aria-hidden>&gt;</span>
+          <textarea
+            ref={textareaRef}
+            className="prompt-input"
+            rows={1}
+            placeholder="输入建模需求…（扩展功能请点击 +）"
+            value={value}
+            disabled={busy}
+            onChange={(e) => {
+              setValue(e.target.value);
+              autoResize();
+            }}
+            onKeyDown={handleKeyDown}
+          />
+        </div>
         <button
           className="prompt-send"
           disabled={busy || !value.trim()}

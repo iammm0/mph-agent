@@ -147,15 +147,17 @@ export function Sidebar() {
 
   return (
     <aside className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
-      <button
-        type="button"
-        className="sidebar-toggle"
-        onClick={() => setCollapsed((c) => !c)}
-        title={collapsed ? "展开侧边栏" : "收起侧边栏"}
-        aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}
-      >
-        <Icon name={collapsed ? "sidebar-right" : "sidebar-left"} size={16} />
-      </button>
+      <div className="sidebar-head">
+        <button
+          type="button"
+          className="sidebar-toggle"
+          onClick={() => setCollapsed((c) => !c)}
+          title={collapsed ? "展开侧边栏" : "收起侧边栏"}
+          aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}
+        >
+          <Icon name={collapsed ? "sidebar-right" : "sidebar-left"} size={16} />
+        </button>
+      </div>
       <button
         type="button"
         className="sidebar-new"
@@ -168,7 +170,7 @@ export function Sidebar() {
       {!collapsed && (
         <>
           <div className="sidebar-groups-config">
-            <div className="sidebar-section-title">对话集合</div>
+            <div className="sidebar-section-title">Sessions</div>
             <div className="sidebar-group-create">
               <input
                 className="sidebar-group-input"

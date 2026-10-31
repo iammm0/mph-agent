@@ -169,6 +169,11 @@ export function AssistantMessage({ message }: { message: ChatMessage }) {
           <div className="assistant-msg-live-ribbon__bar" />
         </div>
       )}
+      <div className="assistant-msg-head">
+        <span className="assistant-msg-time">
+          {formatTime(message.time ?? Date.now())}
+        </span>
+      </div>
       {showReasoningPanel && (
         <div className="assistant-msg-reasoning">
           <p className="assistant-msg-reasoning-title">
