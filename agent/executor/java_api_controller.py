@@ -136,6 +136,130 @@ def _heat_boundary_feature_type(condition_type: str) -> str:
     }.get(condition_type, condition_type)
 
 
+EMW_BOUNDARY_FEATURE_ALIASES = {
+    # COMSOL releases/modules differ on whether the UI node name or the compact
+    # physics feature tag is accepted by feature().create().
+    "ScatteringBoundaryCondition": ["ScatteringBoundaryCondition", "Scattering"],
+    "Scattering": ["Scattering", "ScatteringBoundaryCondition"],
+    "PerfectElectricConductor": ["PerfectElectricConductor", "PerfectConductor"],
+    "PerfectConductor": ["PerfectConductor", "PerfectElectricConductor"],
+    "PerfectMagneticConductor": ["PerfectMagneticConductor"],
+    "ImpedanceBoundaryCondition": ["ImpedanceBoundaryCondition", "ImpedanceBoundary"],
+    "TransitionBoundaryCondition": ["TransitionBoundaryCondition", "TransitionBoundary"],
+    "LayeredTransitionBoundaryCondition": ["LayeredTransitionBoundaryCondition"],
+    "LayeredImpedanceBoundaryCondition": ["LayeredImpedanceBoundaryCondition"],
+    "Port": ["Port"],
+    "ElectricField": ["ElectricField"],
+    "MagneticField": ["MagneticField"],
+}
+
+EMW_PML_CONDITION_TYPES = {
+    "PML",
+    "PerfectlyMatchedLayer",
+    "PerfectlyMatchedLayers",
+    "PerfectlyMatchedLayerBoundary",
+    "perfectly_matched_layer",
+}
+
+EMW_INTERFACE_CONTINUITY_TYPES = {
+    # These are descriptions of dielectric material interfaces, not valid EMW
+    # boundary feature tags. For normal material interfaces, EMW continuity is
+    # already the natural/default condition.
+    "MultilayerDielectric",
+    "MultiLayerDielectric",
+    "DielectricInterface",
+    "FresnelInterface",
+    "MaterialInterface",
+}
+
+EMW_UNSUPPORTED_PARAMETER_KEYS = {
+    # GUI/planner wording occasionally appears as a Java API property. It is not
+    # a settable property on the EMW physics feature in common COMSOL versions.
+    "SpecifyWave",
+}
+
+
+def _dedupe_ordered(values: List[str]) -> List[str]:
+    seen = set()
+    out = []
+    for value in values:
+        if value and value not in seen:
+            out.append(value)
+            seen.add(value)
+    return out
+
+
+def _emw_boundary_feature_candidates(condition_type: str) -> List[str]:
+    return _dedupe_ordered(
+        EMW_BOUNDARY_FEATURE_ALIASES.get(condition_type, [condition_type])
+    )
+
+
+def _is_unknown_parameter_error(exc: Exception) -> bool:
+    msg = str(exc)
+    return "Unknown parameter" in msg or "未知参数" in msg
+
+
+def _physics_create_feature_with_candidates(
+    physics_feature,
+    feature_name: str,
+    feature_types: List[str],
+):
+    last_exc = None
+    for feature_type in feature_types:
+        for entity_dim in (1, 2, None):
+            try:
+                if entity_dim is None:
+                    physics_feature.create(feature_name, feature_type)
+                else:
+                    physics_feature.create(feature_name, feature_type, entity_dim)
+                return feature_type
+            except Exception as exc:
+                last_exc = exc
+                continue
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError(f"No feature type candidates for {feature_name}")
+
+
+def _set_feature_parameters_best_effort(
+    feature,
+    condition_type: str,
+    parameters: Dict[str, Any],
+    notes: List[Dict[str, Any]],
+    *,
+    scope: str,
+    feature_name: str,
+) -> None:
+    for key, value in (parameters or {}).items():
+        if key in EMW_UNSUPPORTED_PARAMETER_KEYS:
+            notes.append(
+                {
+                    "kind": "skipped_parameter",
+                    "scope": scope,
+                    "name": feature_name,
+                    "parameter": key,
+                    "reason": "unsupported_by_comsol_java_api",
+                }
+            )
+            continue
+        try:
+            feature.set(key, _physics_parameter_value(condition_type, key, value))
+        except Exception as exc:
+            if _is_unknown_parameter_error(exc):
+                notes.append(
+                    {
+                        "kind": "skipped_parameter",
+                        "scope": scope,
+                        "name": feature_name,
+                        "parameter": key,
+                        "reason": str(exc),
+                    }
+                )
+                continue
+            raise
+
+
 def _material_property_group(feat, preferred: str = "def"):
     tag = (preferred or "def").strip()
     if tag == "Def":
@@ -355,8 +479,7 @@ class JavaAPIController:
             raise RuntimeError(f"获取材料节点 '{name}' 失败: {e}") from e
         raise RuntimeError("当前 COMSOL 模型不支持材料节点访问")
 
-    @staticmethod
-    def _physics_api(model):
+    def _physics_api(self, model):
         """获取物理场 API：component 下用 component('comp1').physics()，否则用 model.physics()。"""
         try:
             if self._node_list_has(model.component(), "comp1") and hasattr(model.component("comp1"), "physics"):
@@ -377,6 +500,14 @@ class JavaAPIController:
         return model.physics(name)
 
     # ===== 材料节点：查询 / 删除 / 重命名 / 存在检查 / 更新属性 / 批量删除 =====
+
+    def _component_api(self, model):
+        try:
+            if self._node_list_has(model.component(), "comp1"):
+                return model.component("comp1")
+        except Exception:
+            pass
+        return None
 
     def list_material_tags(self, model_path: str) -> Dict[str, Any]:
         """查询模型中现有材料节点名称列表。API: model.material().names() 或 .tags()。"""
@@ -1528,6 +1659,29 @@ class JavaAPIController:
                 return candidate
         return f"{base}_new"
 
+    def _find_unused_coord_system_name(self, model, base: str) -> str:
+        comp = self._component_api(model)
+        seq = None
+        if comp is not None and hasattr(comp, "coordSystem"):
+            seq = comp.coordSystem()
+        elif hasattr(model, "coordSystem"):
+            seq = model.coordSystem()
+        existing = set(self._tags_or_names(seq)) if seq is not None else set()
+        if base not in existing:
+            return base
+        m = re.match(r"^(.+?)(\d+)$", base)
+        if m:
+            prefix, num = m.group(1), int(m.group(2))
+            for i in range(num + 1, num + 100):
+                candidate = f"{prefix}{i}"
+                if candidate not in existing:
+                    return candidate
+        for i in range(1, 100):
+            candidate = f"{base}_{i}"
+            if candidate not in existing:
+                return candidate
+        return f"{base}_new"
+
     def _find_unused_study_name(self, model, base: str) -> str:
         """在模型中找一个未使用的研究名称，如 std1 -> std2 ..."""
         st = model.study()
@@ -1568,6 +1722,45 @@ class JavaAPIController:
             if candidate not in existing:
                 return candidate
         return f"{base}_new"
+
+    def _create_pml_coord_system(
+        self,
+        model,
+        name: str,
+        selection: Any,
+        parameters: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        comp = self._component_api(model)
+        owner = comp if comp is not None and hasattr(comp, "coordSystem") else model
+        if owner is None or not hasattr(owner, "coordSystem"):
+            return None
+        if not isinstance(selection, list) or not selection:
+            return None
+
+        tag = self._find_unused_coord_system_name(model, name or "pml1")
+        coord_seq = owner.coordSystem()
+        try:
+            coord_seq.create(tag, "PML")
+        except Exception:
+            coord_seq.create(tag, "geom1", "PML")
+        coord = owner.coordSystem(tag)
+        try:
+            coord.selection().set(selection)
+        except Exception:
+            pass
+        for key, value in (parameters or {}).items():
+            if key in EMW_UNSUPPORTED_PARAMETER_KEYS:
+                continue
+            try:
+                coord.set(key, _comsol_value(value))
+            except Exception:
+                pass
+        return {
+            "kind": "pml_coord_system",
+            "name": tag,
+            "selection": selection,
+            "created_as": "coordSystem",
+        }
 
     def generate_unique_physics_name(self, model_path: str, base: str = "ht") -> Dict[str, Any]:
         """自动生成唯一的物理场节点名称。API 供迭代修复或执行器调用。"""
@@ -1713,6 +1906,7 @@ class JavaAPIController:
         geom_tag = "geom1"
         added = []
         failures = []
+        notes = []
         for i, field in enumerate(physics_plan.fields):
             tag = PHYSICS_TYPE_TO_COMSOL_TAG.get(field.type, "HeatTransfer")
             base_name = self._physics_interface_name(field.type, i)
@@ -1766,20 +1960,67 @@ class JavaAPIController:
             # Boundary conditions
             for bc in field.boundary_conditions:
                 try:
-                    feature_type = (
-                        _heat_boundary_feature_type(bc.condition_type)
-                        if field.type == "heat"
-                        else bc.condition_type
+                    if field.type == "heat":
+                        feature_types = [_heat_boundary_feature_type(bc.condition_type)]
+                    elif field.type == "electromagnetic":
+                        if bc.condition_type in EMW_INTERFACE_CONTINUITY_TYPES:
+                            notes.append(
+                                {
+                                    "kind": "skipped_boundary_condition",
+                                    "interface": name,
+                                    "name": bc.name,
+                                    "condition_type": bc.condition_type,
+                                    "reason": "dielectric_interfaces_use_default_emw_continuity",
+                                }
+                            )
+                            continue
+                        if bc.condition_type in EMW_PML_CONDITION_TYPES:
+                            pml_note = self._create_pml_coord_system(
+                                model, bc.name, bc.selection, bc.parameters
+                            )
+                            if pml_note:
+                                pml_note["interface"] = name
+                                notes.append(pml_note)
+                                continue
+                            notes.append(
+                                {
+                                    "kind": "boundary_condition_fallback",
+                                    "interface": name,
+                                    "name": bc.name,
+                                    "requested_condition_type": bc.condition_type,
+                                    "used_condition_type": "Scattering",
+                                    "reason": "pml_requires_domain_selection_or_coord_system_api",
+                                }
+                            )
+                            feature_types = ["Scattering", "ScatteringBoundaryCondition"]
+                        else:
+                            feature_types = _emw_boundary_feature_candidates(
+                                bc.condition_type
+                            )
+                    else:
+                        feature_types = [bc.condition_type]
+                    feature_type = _physics_create_feature_with_candidates(
+                        ph_feat, bc.name, feature_types
                     )
-                    try:
-                        ph_feat.create(bc.name, feature_type, 1)
-                    except Exception:
-                        ph_feat.create(bc.name, feature_type)
                     if isinstance(bc.selection, list) and bc.selection:
                         ph_feat.feature(bc.name).selection().set(bc.selection)
-                    for k, v in bc.parameters.items():
-                        ph_feat.feature(bc.name).set(
-                            k, _physics_parameter_value(bc.condition_type, k, v)
+                    _set_feature_parameters_best_effort(
+                        ph_feat.feature(bc.name),
+                        bc.condition_type,
+                        bc.parameters,
+                        notes,
+                        scope="boundary_condition",
+                        feature_name=bc.name,
+                    )
+                    if feature_type != bc.condition_type:
+                        notes.append(
+                            {
+                                "kind": "feature_type_alias",
+                                "interface": name,
+                                "name": bc.name,
+                                "requested_condition_type": bc.condition_type,
+                                "used_condition_type": feature_type,
+                            }
                         )
                 except Exception as e:
                     failures.append(
@@ -1798,10 +2039,14 @@ class JavaAPIController:
                     ph_feat.create(dc.name, dc.condition_type)
                     if isinstance(dc.selection, list) and dc.selection:
                         ph_feat.feature(dc.name).selection().set(dc.selection)
-                    for k, v in dc.parameters.items():
-                        ph_feat.feature(dc.name).set(
-                            k, _physics_parameter_value(dc.condition_type, k, v)
-                        )
+                    _set_feature_parameters_best_effort(
+                        ph_feat.feature(dc.name),
+                        dc.condition_type,
+                        dc.parameters,
+                        notes,
+                        scope="domain_condition",
+                        feature_name=dc.name,
+                    )
                 except Exception as e:
                     failures.append(
                         {
@@ -1850,7 +2095,7 @@ class JavaAPIController:
                 )
                 logger.warning("创建耦合 %s 失败: %s", coupling.type, e)
 
-        return {"interfaces": added, "failures": failures}
+        return {"interfaces": added, "failures": failures, "notes": notes}
 
     @staticmethod
     def _physics_interface_name(physics_type: str, index: int) -> str:

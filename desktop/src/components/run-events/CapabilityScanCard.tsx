@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import type { RunEvent } from "../../lib/types";
 import { Icon } from "../Icon";
 
@@ -23,8 +23,6 @@ type ScanState = {
   finished: boolean;
   elapsedMs: number;
 };
-
-const COLLAPSE_DELAY_MS = 600;
 
 function num(value: unknown, fallback = 0): number {
   const n = typeof value === "number" ? value : Number(value);
@@ -150,30 +148,11 @@ export function CapabilityScanCard({
 }) {
   const state = useMemo(() => reduceEvents(events), [events]);
   const [expanded, setExpanded] = useState<boolean>(true);
-  const [hasAutoCollapsed, setHasAutoCollapsed] = useState<boolean>(false);
-  const lastHitNameRef = useRef<string>("");
 
   const hitsForDisplay: ScanHit[] = useMemo(() => {
     if (state.finished && state.finalHits.length > 0) return state.finalHits;
     return Array.from(state.hits.values());
   }, [state.finished, state.finalHits, state.hits]);
-
-  const newestName = hitsForDisplay.length > 0 ? hitsForDisplay[hitsForDisplay.length - 1].name : "";
-
-  useEffect(() => {
-    if (newestName) {
-      lastHitNameRef.current = newestName;
-    }
-  }, [newestName]);
-
-  useEffect(() => {
-    if (!state.finished || hasAutoCollapsed) return;
-    const t = window.setTimeout(() => {
-      setExpanded(false);
-      setHasAutoCollapsed(true);
-    }, COLLAPSE_DELAY_MS);
-    return () => window.clearTimeout(t);
-  }, [state.finished, hasAutoCollapsed]);
 
   const progressPct = state.total > 0 ? Math.min(100, Math.round((state.scanned / state.total) * 100)) : 0;
   const summaryHits = hitsForDisplay.length;
@@ -279,7 +258,7 @@ export function CapabilityScanCard({
                 <HitRow
                   key={hit.name}
                   hit={hit}
-                  highlighted={!state.finished && hit.name === lastHitNameRef.current}
+                  highlighted={false}
                 />
               ))}
             </ul>

@@ -21,7 +21,7 @@ export function TokenBudgetCard({ event }: { event: RunEvent }) {
   const accurate = d.tokenizer_accurate === true;
   const report = String(d.report ?? "").trim();
 
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   const severity = useMemo(() => {
     if (exceedsHard) return "hard";

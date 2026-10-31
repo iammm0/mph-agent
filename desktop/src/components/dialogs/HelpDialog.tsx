@@ -59,8 +59,8 @@ export function HelpDialog() {
           <span className="dialog-row-val">设置默认输出文件名</span>
         </div>
         <div className="dialog-row">
-          <span className="dialog-row-key">演示示例</span>
-          <span className="dialog-row-val">演示示例</span>
+          <span className="dialog-row-key">牛顿环示例</span>
+          <span className="dialog-row-val">触发内置牛顿环等厚干涉仿真案例</span>
         </div>
         <div className="dialog-row">
           <span className="dialog-row-key">环境诊断</span>
@@ -73,33 +73,31 @@ export function HelpDialog() {
 
         <div className="dialog-section-title">支持能力</div>
         <div className="dialog-row">
-          <span className="dialog-row-key">2D/3D 几何</span>
+          <span className="dialog-row-key">牛顿环几何</span>
           <span className="dialog-row-val">
-            矩形/圆/椭圆/多边形/长方体/圆柱/球/锥/圆环
+            平凸透镜、平板/平面镜、空气薄膜、轴对称环形观察面
           </span>
         </div>
         <div className="dialog-row">
-          <span className="dialog-row-key">布尔运算</span>
-          <span className="dialog-row-val">并集/差集/交集/拉伸/旋转</span>
+          <span className="dialog-row-key">光学过程</span>
+          <span className="dialog-row-val">反射、透射、相位反转、Fresnel 损耗与可选吸收损耗</span>
         </div>
         <div className="dialog-row">
-          <span className="dialog-row-key">材料系统</span>
-          <span className="dialog-row-val">内置材料库 + 自定义属性</span>
+          <span className="dialog-row-key">单色光扫描</span>
+          <span className="dialog-row-val">486.1 nm / 546.1 nm / 589.3 nm / 632.8 nm</span>
         </div>
         <div className="dialog-row">
-          <span className="dialog-row-key">物理场</span>
-          <span className="dialog-row-val">
-            传热/电磁/结构/流体/声学/压电/化学/多体
-          </span>
+          <span className="dialog-row-key">解析校验</span>
+          <span className="dialog-row-val">用反射暗环半径关系 r_m = sqrt(m R lambda) 校验前几级环</span>
         </div>
         <div className="dialog-row">
-          <span className="dialog-row-key">多物理场耦合</span>
-          <span className="dialog-row-val">热应力/流固/电磁热</span>
+          <span className="dialog-row-key">结果导出</span>
+          <span className="dialog-row-val">导出四种波长下的牛顿环图像和汇总 CSV</span>
         </div>
         <div className="dialog-row">
           <span className="dialog-row-key">研究类型</span>
           <span className="dialog-row-val">
-            稳态/瞬态/特征值/频域/参数化扫描
+            参数化扫描、光强后处理、图像与数据导出
           </span>
         </div>
 

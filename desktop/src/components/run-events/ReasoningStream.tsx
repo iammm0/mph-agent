@@ -115,8 +115,8 @@ function BudgetBadge({ event }: { event: RunEvent }) {
   const report = String(d.report ?? "").trim();
 
   return (
-    <details className={`reasoning-badge reasoning-badge--budget reasoning-badge--${severity}`}>
-      <summary className="reasoning-badge__summary" title="Token 预算（点击展开）">
+    <details className={`reasoning-badge reasoning-badge--budget reasoning-badge--${severity}`} open>
+      <summary className="reasoning-badge__summary" title="Token 预算">
         <span className="reasoning-badge__label">tokens</span>
         <span className="reasoning-badge__value">
           {promptTokens || "-"}
@@ -139,8 +139,8 @@ function PlanSyncBadge({ event }: { event: RunEvent }) {
   const sha = String(d.sha256 ?? "").trim();
 
   return (
-    <details className={`reasoning-badge reasoning-badge--plan reasoning-badge--${severity}`}>
-      <summary className="reasoning-badge__summary" title="计划镜像状态（点击展开）">
+    <details className={`reasoning-badge reasoning-badge--plan reasoning-badge--${severity}`} open>
+      <summary className="reasoning-badge__summary" title="计划镜像状态">
         <span className="reasoning-badge__label">plan</span>
         <span className="reasoning-badge__value">
           {steps ? `steps=${steps}` : "steps=-"}
@@ -254,15 +254,15 @@ function PhaseSection({ block, isLive }: PhaseSectionProps) {
   const visible = useMemo(() => visiblePhaseEvents(block.events), [block.events]);
   const summary = useMemo(() => buildPhaseSummary(block), [block]);
 
-  // 默认展开当前阶段；非 current 阶段默认收起。
-  // 用户手动 toggle 后锁定状态，不再被 isCurrent 切换覆盖。
-  const [expanded, setExpanded] = useState<boolean>(block.isCurrent);
+  // 建模过程默认展开，便于直接看到智能体推理、操作与观察事件。
+  // 用户手动 toggle 后锁定状态，不再被后续事件刷新覆盖。
+  const [expanded, setExpanded] = useState<boolean>(true);
   const [userTouched, setUserTouched] = useState<boolean>(false);
 
   useEffect(() => {
     if (userTouched) return;
-    setExpanded(block.isCurrent);
-  }, [block.isCurrent, userTouched]);
+    setExpanded(true);
+  }, [block.events.length, userTouched]);
 
   const handleToggle = () => {
     setUserTouched(true);
@@ -278,7 +278,7 @@ function PhaseSection({ block, isLive }: PhaseSectionProps) {
 
   const budget = lastEventOfType(block.events, "token_budget");
   const sync = lastEventOfType(block.events, "plan_runtime_sync");
-  const collapsible = !block.isCurrent;
+  const collapsible = true;
 
   return (
     <section

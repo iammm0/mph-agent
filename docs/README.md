@@ -1,62 +1,87 @@
-# 文档索引
+# 文档中心
 
-本目录按用途对文档做了分类，便于查阅与维护。
+这里是项目的统一文档入口。文档结构刻意保持为少数几个大类，避免把信息拆得过细，同时保证从使用、架构、参考到协作都能完整覆盖。
 
-## 一、入门与使用（getting-started/）
+## 如何使用这套文档
 
-安装、配置与日常使用相关。
+如果你是第一次接触这个项目，建议按顺序阅读：
 
-| 文档 | 说明 |
+1. [README.md](../README.md)
+2. [getting-started/INSTALL.md](getting-started/INSTALL.md)
+3. [getting-started/CONFIG.md](getting-started/CONFIG.md)
+4. [architecture/architecture.md](architecture/architecture.md)
+5. [AGENT.md](../AGENT.md)
+
+如果你已经在维护代码，可以把这里当作文档地图使用。
+
+## 一、入门与运行
+
+这部分回答“怎么装、怎么配、怎么跑、怎么排查基础问题”。
+
+| 文档 | 作用 |
 |------|------|
-| [INSTALL.md](getting-started/INSTALL.md) | 安装与构建：分发包构建、安装步骤、环境要求 |
-| [CONFIG.md](getting-started/CONFIG.md) | 配置说明：环境变量、.env、COMSOL/JAVA/LLM 配置与验证 |
-| [EXAMPLE.md](getting-started/EXAMPLE.md) | 示例命令：可直接复制的 run/plan/exec/demo 等命令，含复杂几何测试提示词 |
-| [CONTEXT.md](getting-started/CONTEXT.md) | 上下文管理：对话历史、摘要、别名与上下文查看 |
-| [ollama-setup.md](getting-started/ollama-setup.md) | Ollama 本地部署与配置 |
-| [llm-backends.md](getting-started/llm-backends.md) | LLM 后端：DeepSeek、Kimi、Ollama、OpenAI 兼容等 |
-| [DEBUG-BRIDGE.md](getting-started/DEBUG-BRIDGE.md) | **调试 Python Bridge**：出现「Bridge process closed unexpectedly」时如何开启 stderr 与 traceback 调试 |
-| [BRIDGE-WORKING-SNAPSHOT.md](getting-started/BRIDGE-WORKING-SNAPSHOT.md) | Bridge 可用版本快照：用于回退对比排查 |
+| [getting-started/INSTALL.md](getting-started/INSTALL.md) | 安装与源码运行说明，覆盖依赖、桌面端和开发环境准备 |
+| [getting-started/CONFIG.md](getting-started/CONFIG.md) | 环境变量、`.env`、LLM、COMSOL、Java 与输出目录配置 |
+| [getting-started/EXAMPLE.md](getting-started/EXAMPLE.md) | 常见运行示例与调用方式 |
+| [getting-started/CONTEXT.md](getting-started/CONTEXT.md) | 上下文、会话历史、摘要记忆与相关能力说明 |
+| [getting-started/llm-backends.md](getting-started/llm-backends.md) | 各类 LLM 后端配置方式 |
+| [getting-started/ollama-setup.md](getting-started/ollama-setup.md) | Ollama 本地运行配置 |
+| [getting-started/DEBUG-BRIDGE.md](getting-started/DEBUG-BRIDGE.md) | 桌面端 Python Bridge 调试 |
+| [getting-started/BRIDGE-WORKING-SNAPSHOT.md](getting-started/BRIDGE-WORKING-SNAPSHOT.md) | Bridge 可用快照说明 |
+| [getting-started/BRIDGE-CODE-LOCATIONS.md](getting-started/BRIDGE-CODE-LOCATIONS.md) | Bridge 关键代码位置索引 |
 
-## 二、架构与设计（architecture/）
+## 二、系统架构
 
-系统架构、ReAct 模式、工作流程与 Agent 职责（含架构图与流程图）。
+这部分回答“系统由哪些模块组成、数据如何流动、职责如何分层”。
 
-| 文档 | 说明 |
+| 文档 | 作用 |
 |------|------|
-| [architecture.md](architecture/architecture.md) | **架构设计**：系统总体架构图、路由与 ReAct 模式图、Think→Act→Observe→Iterate 工作流程图、核心组件与技术栈 |
-| [agent-design.md](architecture/agent-design.md) | Agent 设计：ReActAgent、ReasoningEngine、ActionExecutor、Planner/Executor、Q&A 与 Summary 职责与协作 |
-| [comsol-modules-and-context.md](architecture/comsol-modules-and-context.md) | 三模块与共享上下文：模型开发器/App 开发器/模型管理器、EventBus、SessionContext 扩展设想 |
+| [architecture/architecture.md](architecture/architecture.md) | 项目整体架构、核心流程和模块边界 |
+| [architecture/agent-design.md](architecture/agent-design.md) | Agent 设计、ReAct 角色分工与运行方式 |
+| [architecture/comsol-modules-and-context.md](architecture/comsol-modules-and-context.md) | COMSOL 模块与上下文协作关系 |
 
-### 设计范式（agent-design-skills/）
+## 三、参考资料
 
-与具体业务无关的程序设计经验，可在其他项目中复用。
+这部分提供较稳定的查询类文档，适合开发时按需查阅。
 
-| 文档 | 说明 |
+| 文档 | 作用 |
 |------|------|
-| [agent-design-skills/README.md](agent-design-skills/README.md) | 设计范式目录索引 |
-| [agent-architecture.md](agent-design-skills/agent-architecture.md) | 多智能体架构、路由分发 |
-| [skill-plugin-system.md](agent-design-skills/skill-plugin-system.md) | 技能/插件系统 |
-| [session-and-events.md](agent-design-skills/session-and-events.md) | 会话与 EventBus |
-| [cli-and-dependencies.md](agent-design-skills/cli-and-dependencies.md) | CLI 与依赖注入 |
-| [config-and-env.md](agent-design-skills/config-and-env.md) | 配置与环境 |
-| [prompt-management.md](agent-design-skills/prompt-management.md) | 提示词管理 |
-| [react-and-tool-calling.md](agent-design-skills/react-and-tool-calling.md) | ReAct 与工具调用 |
-| [commit-conventions.md](agent-design-skills/commit-conventions.md) | 提交规范 |
+| [reference/comsol-api-notes.md](reference/comsol-api-notes.md) | COMSOL API 使用笔记 |
+| [reference/comsol-api-links.md](reference/comsol-api-links.md) | COMSOL 官方文档与外部参考链接 |
 
-## 三、参考（reference/）
+## 四、项目协作与发布
 
-COMSOL API 与外部参考链接。
+这部分回答“如何参与维护、如何提交、如何发版”。
 
-| 文档 | 说明 |
+| 文档 | 作用 |
 |------|------|
-| [comsol-api-notes.md](reference/comsol-api-notes.md) | COMSOL API 笔记：Java API 用法、模型/几何接口要点 |
-| [comsol-api-links.md](reference/comsol-api-links.md) | COMSOL 官方文档与版本链接 |
+| [project/CONTRIBUTING.md](project/CONTRIBUTING.md) | 贡献流程、协作约定与提交建议 |
+| [project/PUBLISH.md](project/PUBLISH.md) | 发布与打包流程 |
+| [release/RELEASE-v0.1.0.md](release/RELEASE-v0.1.0.md) | 历史版本发布记录 |
 
-## 四、项目维护（project/）
+## 五、设计模式沉淀
 
-贡献、发布与协作规范。
+`agent-design-skills/` 不是面向最终用户的“使用文档”，而是从本项目中提炼出的工程设计经验，偏向维护者和架构层复用。
 
-| 文档 | 说明 |
-|------|------|
-| [CONTRIBUTING.md](project/CONTRIBUTING.md) | 贡献指南：分支、提交信息、PR 与文档约定 |
-| [PUBLISH.md](project/PUBLISH.md) | 发布流程：版本、构建与 PyPI 发布 |
+主要内容包括：
+
+- Agent 架构与分工
+- 技能 / 插件系统
+- Session 与 EventBus
+- 配置和环境设计
+- Prompt 管理
+- ReAct 与工具调用
+
+入口文档见 [agent-design-skills/README.md](agent-design-skills/README.md)。
+
+## 文档边界
+
+当前文档体系按职责分工如下：
+
+- 根目录 `README.md`：面向所有读者，讲项目全貌。
+- `docs/README.md`：文档导航页，帮助定位资料。
+- `AGENT.md`：面向维护者，讲内部运行链路。
+- `BUILD.md`：面向打包和分发，讲桌面构建。
+- `agent/README.md`：面向读代码的人，讲 Python 包目录职责。
+
+如果新增文档，优先并入现有分类，而不是继续细分更多层级。

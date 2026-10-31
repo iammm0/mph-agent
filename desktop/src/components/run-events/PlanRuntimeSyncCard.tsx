@@ -27,7 +27,7 @@ export function PlanRuntimeSyncCard({ event }: { event: RunEvent }) {
   const sha = String(d.sha256 ?? "").trim();
   const error = String(d.error ?? "").trim();
 
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   const severity = useMemo(() => (error ? "fail" : "ok"), [error]);
   const title = useMemo(

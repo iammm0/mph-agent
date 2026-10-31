@@ -225,7 +225,7 @@ export function useBridge() {
           addMessage("system", "已切换为执行模式");
           return;
         case "demo":
-          addMessage("system", "已触发演示示例");
+          addMessage("system", "已触发牛顿环仿真示例");
           await sendCommand("demo");
           return;
         case "doctor":

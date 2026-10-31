@@ -6,6 +6,7 @@ import pytest
 
 from agent.executor import java_api_controller as jac
 from agent.executor.java_api_controller import JavaAPIController
+from agent.schemas.physics import BoundaryCondition, PhysicsField, PhysicsPlan
 
 
 @pytest.fixture
@@ -168,3 +169,160 @@ def test_extract_model_operation_case_builds_sectioned_analysis(controller, tmp_
     assert case["design_intent"]
     assert "原始模型路径" in case["copy_edit_prompt"]
     assert case["context_block"]
+
+
+class _FakeSelection:
+    def __init__(self):
+        self.entities = None
+
+    def set(self, entities):
+        self.entities = entities
+
+
+class _FakeFeature:
+    def __init__(self, name, feature_type=None):
+        self.name = name
+        self.feature_type = feature_type
+        self.params = {}
+        self._selection = _FakeSelection()
+
+    def selection(self):
+        return self._selection
+
+    def set(self, key, value):
+        if key == "SpecifyWave":
+            raise Exception("未知参数 SpecifyWave。")
+        self.params[key] = value
+
+
+class _FakeFeatureList:
+    def __init__(self, accepted_types):
+        self.accepted_types = set(accepted_types)
+        self.items = {}
+        self.create_calls = []
+
+    def create(self, name, feature_type, *_args):
+        self.create_calls.append((name, feature_type, _args))
+        if feature_type not in self.accepted_types:
+            raise Exception(f"未知特征 ID: {feature_type}。")
+        self.items[name] = _FakeFeature(name, feature_type)
+
+    def feature(self, name):
+        return self.items[name]
+
+    def names(self):
+        return list(self.items)
+
+
+class _FakePhysicsList:
+    def __init__(self):
+        self.items = {}
+
+    def create(self, name, _tag, _geom_tag):
+        self.items[name] = _FakeFeatureList({"Scattering", "Port"})
+
+    def __call__(self, name=None):
+        if name is None:
+            return self
+        return self.items[name]
+
+    def names(self):
+        return list(self.items)
+
+
+class _FakeGeom:
+    def run(self):
+        pass
+
+    def names(self):
+        return ["geom1"]
+
+    def has(self, name):
+        return name == "geom1"
+
+    def __call__(self, _name=None):
+        return self
+
+
+class _FakeComponent:
+    def __init__(self, physics):
+        self._physics = physics
+        self._geom = _FakeGeom()
+
+    def physics(self, name=None):
+        return self._physics(name)
+
+    def geom(self, name=None):
+        return self._geom(name)
+
+
+class _FakeComponentList:
+    def __init__(self, component):
+        self._component = component
+
+    def __call__(self, name=None):
+        if name is None:
+            return self
+        if name == "comp1":
+            return self._component
+        raise KeyError(name)
+
+    def names(self):
+        return ["comp1"]
+
+    def has(self, name):
+        return name == "comp1"
+
+
+class _FakeModel:
+    def __init__(self):
+        self._physics = _FakePhysicsList()
+        self._component = _FakeComponent(self._physics)
+        self._components = _FakeComponentList(self._component)
+
+    def component(self, name=None):
+        return self._components(name)
+
+    def physics(self, name=None):
+        return self._physics(name)
+
+
+def test_add_physics_normalizes_emw_boundary_aliases_and_skips_gui_parameters(controller):
+    model = _FakeModel()
+    plan = PhysicsPlan(
+        fields=[
+            PhysicsField(
+                type="electromagnetic",
+                boundary_conditions=[
+                    BoundaryCondition(
+                        name="scattering_outer",
+                        condition_type="ScatteringBoundaryCondition",
+                        selection=[1, 2],
+                        parameters={"SpecifyWave": True, "E0": "1[V/m]"},
+                    ),
+                    BoundaryCondition(
+                        name="fresnel_lens_air",
+                        condition_type="MultilayerDielectric",
+                        selection=[3],
+                    ),
+                    BoundaryCondition(
+                        name="pml_outer",
+                        condition_type="PerfectlyMatchedLayer",
+                        selection="all",
+                    ),
+                ],
+            )
+        ]
+    )
+
+    result = controller._add_physics_direct(model, plan)
+
+    assert result["failures"] == []
+    emw = model.physics("emw0")
+    assert emw.feature("scattering_outer").feature_type == "Scattering"
+    assert emw.feature("scattering_outer").params == {"E0": "1[V/m]"}
+    note_kinds = [n["kind"] for n in result["notes"]]
+    assert "feature_type_alias" in note_kinds
+    assert "skipped_parameter" in note_kinds
+    assert "skipped_boundary_condition" in note_kinds
+    assert "boundary_condition_fallback" in note_kinds
