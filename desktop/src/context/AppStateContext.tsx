@@ -11,6 +11,7 @@ import {
 import type {
   AgentMode,
   AppView,
+  SettingsSection,
   AssistantPresentation,
   ChatMessage,
   MessageRole,
@@ -62,6 +63,7 @@ interface AppState {
   messagesByConversation: Record<string, ChatMessage[]>;
   workspaceDir: string | null;
   view: AppView;
+  settingsTab: SettingsSection;
   mode: AgentMode;
   backend: LLMBackendId | null;
   outputDefault: string | null;
@@ -107,7 +109,7 @@ type AppAction =
       success: boolean;
     }
   | { type: "SET_MODE"; mode: AgentMode }
-  | { type: "SET_VIEW"; view: AppView }
+  | { type: "SET_VIEW"; view: AppView; settingsTab?: SettingsSection }
   | { type: "SET_BACKEND"; backend: LLMBackendId | null }
   | { type: "SET_OUTPUT"; output: string | null }
   | { type: "SET_EXEC_CODE_ONLY"; value: boolean }
@@ -148,6 +150,7 @@ function getInitialState(): AppState {
       messagesByConversation: { [first.id]: [] },
       workspaceDir,
       view: "session",
+      settingsTab: "theme",
       mode: "run",
       backend,
       outputDefault: null,
@@ -171,6 +174,7 @@ function getInitialState(): AppState {
     messagesByConversation,
     workspaceDir,
     view: "session",
+    settingsTab: "theme",
     mode: "run",
     backend,
     outputDefault: null,
@@ -204,6 +208,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
           [conv.id]: [],
         },
         discussionReadyForPlan: false,
+        view: "session",
       };
     }
     case "ADD_CONVERSATION_GROUP": {
@@ -247,6 +252,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         currentConversationId: action.id,
         discussionReadyForPlan: false,
+        view: "session",
       };
     case "SET_CONVERSATION_TITLE": {
       const list = state.conversations.map((c) =>
@@ -366,8 +372,17 @@ function appReducer(state: AppState, action: AppAction): AppState {
         discussionReadyForPlan:
           action.mode === "discuss" ? state.discussionReadyForPlan : false,
       };
-    case "SET_VIEW":
-      return { ...state, view: action.view };
+    case "SET_VIEW": {
+      if (action.view === "session") return { ...state, view: "session" };
+      const openedFromView: Partial<Record<AppView, SettingsSection>> = {
+        "case-library": "case-library",
+        "skills-system": "skills",
+        "ops-catalog": "ops",
+      };
+      const settingsTab =
+        action.settingsTab ?? openedFromView[action.view] ?? state.settingsTab;
+      return { ...state, view: "settings", settingsTab };
+    }
     case "SET_DISCUSSION_READY_FOR_PLAN":
       return { ...state, discussionReadyForPlan: action.value };
     case "SET_BACKEND":
@@ -402,8 +417,21 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, lastPlanInput: action.input };
     case "SET_WORKSPACE_DIR":
       return { ...state, workspaceDir: action.path };
-    case "HYDRATE":
-      return { ...state, ...action.state };
+    case "HYDRATE": {
+      const next = { ...state, ...action.state };
+      const openedFromView: Partial<Record<AppView, SettingsSection>> = {
+        "case-library": "case-library",
+        "skills-system": "skills",
+        "ops-catalog": "ops",
+      };
+      const mapped = openedFromView[next.view];
+      if (mapped) {
+        next.view = "settings";
+        next.settingsTab = mapped;
+      }
+      if (!next.settingsTab) next.settingsTab = "theme";
+      return next;
+    }
     default:
       return state;
   }

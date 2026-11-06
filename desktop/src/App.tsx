@@ -1,12 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppState } from "./context/AppStateContext";
-import type { AppView } from "./lib/types";
 import { Sidebar } from "./components/Sidebar";
 import { Session } from "./components/Session";
-import { CaseLibraryPage } from "./components/CaseLibraryPage";
-import { SkillsSystemPage } from "./components/SkillsSystemPage";
-import { OpsCatalogPage } from "./components/OpsCatalogPage";
 import { TitleBar } from "./components/TitleBar";
 import { DialogOverlay } from "./components/dialogs/DialogOverlay";
 import { HelpDialog } from "./components/dialogs/HelpDialog";
@@ -25,20 +21,9 @@ interface BridgeInitStatus {
   initializing?: boolean;
 }
 
-function renderMainView(view: AppView) {
-  switch (view) {
-    case "case-library":
-      return <CaseLibraryPage />;
-    case "skills-system":
-      return <SkillsSystemPage />;
-    case "ops-catalog":
-      return <OpsCatalogPage />;
-    case "settings":
-      return <SettingsDialog pageMode />;
-    case "session":
-    default:
-      return <Session />;
-  }
+function renderMainView(view: string) {
+  if (view === "settings") return <SettingsDialog pageMode />;
+  return <Session />;
 }
 
 export default function App() {
@@ -126,7 +111,7 @@ export default function App() {
         </div>
       )}
       <div className="app-body">
-        {state.view === "session" && <Sidebar />}
+        <Sidebar />
         <div className="app-main">{renderMainView(state.view)}</div>
       </div>
       {dialogContent && (

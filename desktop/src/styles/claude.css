@@ -1,36 +1,33 @@
 /* =============================================================================
- * Claude Code 视觉覆盖层 (claude.css)
+ * mph-agent 品牌视觉覆盖层 (claude.css)
  * ----------------------------------------------------------------------------
- * 目标: 把 mph-agent 桌面端复刻为 Claude Code 桌面应用的视觉语言 ——
- *       炭灰深/浅双主题 + 陶土橙 accent + 圆角 + 无衬线 + 会话式布局。
- * 思路与 hermes.css 完全一致: 本文件只覆盖"外观", 不动布局尺寸/交互逻辑,
- * 现有页面行为保持不变。加载顺序: App.css -> claude.css (main.tsx)。
+ * 与官网 https://www.mphagent.site/ 对齐:
+ *   浅蓝灰底 + 品牌青 #00bffa + 深蓝核 #002b70 + 圆角 + 无衬线。
+ * 加载顺序: App.css -> claude.css (main.tsx)。
  * ========================================================================= */
 
-/* ===== 0. 调色板 / 字体 token: 覆盖 App.css 顶部的 Hermes token ===== */
+/* ===== 0. 调色板 / 字体 token ===== */
 
 :root,
 [data-theme="dark"] {
-    /* 炭灰底 (Claude Code dark) */
-    --bg: #1a1a1a;
-    --bg-panel: #212121;
-    --bg-element: #2b2b2b;
-    --bg-menu: #161616;
+    /* 官网 dark */
+    --bg: #0a1018;
+    --bg-panel: #162033;
+    --bg-element: #101826;
+    --bg-menu: #070b12;
 
-    /* 浅灰文字 */
-    --text: #e7e7e7;
-    --text-rgb: 231, 231, 231;
-    --text-muted: #9c9c9c;
+    --text: #e8eef6;
+    --text-rgb: 232, 238, 246;
+    --text-muted: #8fa0b8;
 
-    /* 陶土橙 accent (Claude 品牌色近似) */
-    --primary: #d97757;
-    --primary-rgb: 217, 119, 87;
-    --secondary: #c96f4f;
-    --secondary-rgb: 201, 111, 79;
-    --accent: #d97757;
-    --accent-rgb: 217, 119, 87;
+    /* 品牌青 + 亮蓝辅色 */
+    --primary: #00bffa;
+    --primary-rgb: 0, 191, 250;
+    --secondary: #4f8cff;
+    --secondary-rgb: 79, 140, 255;
+    --accent: #00bffa;
+    --accent-rgb: 0, 191, 250;
 
-    /* 状态色: 低饱和 */
     --error: #e05656;
     --error-rgb: 224, 86, 86;
     --warning: #d9a45b;
@@ -38,47 +35,43 @@
     --success: #6aa880;
     --success-rgb: 106, 168, 128;
 
-    /* 细分隔线 */
-    --border: rgba(255, 255, 255, 0.08);
-    --border-strong: rgba(255, 255, 255, 0.16);
-    --border-active: #d97757;
+    --border: rgba(186, 214, 245, 0.12);
+    --border-strong: rgba(186, 214, 245, 0.24);
+    --border-active: #00bffa;
 
-    /* 圆角 */
     --radius: 8px;
     --radius-lg: 12px;
 
-    /* 字体: 无衬线为主, 等宽保留 JetBrains Mono */
     --font-display:
-        "Inter", system-ui, -apple-system, "Segoe UI", "Microsoft YaHei",
-        sans-serif;
+        system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC",
+        "Microsoft YaHei", sans-serif;
     --font-serif: var(--font-display);
     --font-sans: var(--font-display);
     --font-mono:
         "JetBrains Mono", "Cascadia Code", "IBM Plex Mono", "Consolas",
         monospace;
 
-    /* 去掉 Hermes 的全大写大字距 */
     --tracking-wide: 0.02em;
     --tracking-wider: 0.04em;
 }
 
 [data-theme="light"] {
-    /* 暖白浅色底 */
-    --bg: #f5f5f4;
+    /* 官网 light */
+    --bg: #f0f5fa;
     --bg-panel: #ffffff;
-    --bg-element: #efefee;
-    --bg-menu: #f2f2f1;
+    --bg-element: #e2ebf4;
+    --bg-menu: #e8eef6;
 
-    --text: #1f1f1f;
-    --text-rgb: 31, 31, 31;
-    --text-muted: #6f6f6f;
+    --text: #0b1a2e;
+    --text-rgb: 11, 26, 46;
+    --text-muted: #5b6e86;
 
-    --primary: #d97757;
-    --primary-rgb: 217, 119, 87;
-    --secondary: #c96f4f;
-    --secondary-rgb: 201, 111, 79;
-    --accent: #d97757;
-    --accent-rgb: 217, 119, 87;
+    --primary: #00bffa;
+    --primary-rgb: 0, 191, 250;
+    --secondary: #002b70;
+    --secondary-rgb: 0, 43, 112;
+    --accent: #00bffa;
+    --accent-rgb: 0, 191, 250;
 
     --error: #c84343;
     --error-rgb: 200, 67, 67;
@@ -87,16 +80,16 @@
     --success: #3f8f63;
     --success-rgb: 63, 143, 99;
 
-    --border: rgba(0, 0, 0, 0.08);
-    --border-strong: rgba(0, 0, 0, 0.14);
-    --border-active: #d97757;
+    --border: rgba(11, 26, 46, 0.09);
+    --border-strong: rgba(11, 26, 46, 0.18);
+    --border-active: #00bffa;
 
     --radius: 8px;
     --radius-lg: 12px;
 
     --font-display:
-        "Inter", system-ui, -apple-system, "Segoe UI", "Microsoft YaHei",
-        sans-serif;
+        system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC",
+        "Microsoft YaHei", sans-serif;
     --font-serif: var(--font-display);
     --font-sans: var(--font-display);
     --font-mono:
@@ -152,13 +145,20 @@ body {
     gap: 6px;
 }
 
-.titlebar-icon {
-    width: 22px;
-    height: 22px;
-    border-radius: 6px;
-    background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.22), rgba(var(--accent-rgb), 0.06));
-    color: var(--accent);
+.brand-lockup {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     margin-right: 4px;
+}
+
+.brand-lockup__word {
+    font-family: "Source Serif 4", "Iowan Old Style", "Songti SC", "Times New Roman", serif;
+    font-weight: 500;
+    font-size: 15px;
+    letter-spacing: -0.01em;
+    color: var(--text);
+    white-space: nowrap;
 }
 
 .titlebar-title {
@@ -182,17 +182,18 @@ body {
 
 .titlebar-nav {
     gap: 2px;
-    padding: 2px;
-    border-radius: 10px;
-    background: var(--bg);
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
 }
 
 .titlebar-entry-btn {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
+    width: 28px;
     height: 28px;
-    padding: 0 10px;
+    padding: 0;
     border: none;
     border-radius: 7px;
     background: transparent;
@@ -747,7 +748,7 @@ body {
     align-items: center;
     justify-content: center;
     color: #fff;
-    background: linear-gradient(135deg, #d97757 0%, #b85e43 100%);
+    background: linear-gradient(135deg, #00bffa 0%, #002b70 100%);
     flex-shrink: 0;
 }
 .assistant-msg-name {
@@ -853,41 +854,82 @@ body {
     );
 }
 
-/* 阶段流: 圆角小节 */
-.reasoning-stream__phase-header {
+/* DSH 过程框：Claude 主题微调 */
+.dsh-process-box {
     border-radius: 10px;
     background: var(--bg-panel);
-    border: 1px solid var(--border);
-    padding: 9px 12px;
 }
-.reasoning-stream__phase-header:hover {
-    border-color: var(--border-strong);
+.dsh-process-box--live {
+    border-color: rgba(var(--accent-rgb), 0.35);
 }
-.reasoning-stream__phase-label {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text);
-}
-.reasoning-stream__phase--current .reasoning-stream__phase-label {
+.dsh-process-box--live .dsh-process-box__phase,
+.dsh-process-item--think .dsh-process-item__kind {
     color: var(--accent);
 }
-.reasoning-stream__live-chip {
+.dsh-process__status-dot {
+    background: var(--accent);
+}
+.dsh-process__toggle:hover {
     color: var(--accent);
-    background: rgba(var(--accent-rgb), 0.1);
 }
 
 /* ===== 7. 输入区 (Claude 式 composer) ===== */
 
 .prompt-area {
-    padding: 6px 24px 12px;
-    border-top: 1px solid var(--border);
+    padding: 8px 24px 14px;
+    border-top: none;
     background: var(--bg);
     backdrop-filter: none;
 }
 
-.prompt-toolbar {
-    margin-bottom: 6px;
-    justify-content: flex-start;
+.sidebar-group-add--quiet {
+    align-self: flex-start;
+    height: auto;
+    padding: 2px 0;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+.sidebar-group-add--quiet:hover {
+    color: var(--text);
+}
+
+.composer-status {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 760px;
+    margin: 6px auto 0;
+    min-height: 22px;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.composer-status__modes {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.composer-status__toast {
+    color: var(--accent);
+}
+
+.composer-status__meta {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.composer-status.warning .composer-status__meta {
+    color: var(--warning);
+}
+
+.composer-status.danger .composer-status__meta {
+    color: var(--error);
 }
 
 .prompt-mode-toast {
@@ -1016,7 +1058,7 @@ body {
     color: var(--text-muted);
 }
 
-/* 发送: 陶土橙圆形钮 */
+/* 发送: 品牌青圆形钮 */
 .prompt-send {
     width: 30px;
     height: 30px;
@@ -1188,102 +1230,8 @@ button {
 }
 
 /* =============================================================================
- * 9. Agent 执行环节（推理流 / run-events）
- * ----------------------------------------------------------------------------
- * 把「编号时间线」改为 Claude Code 式的扁平阶段卡片流：阶段 = 圆角卡片 +
- * 状态条；事件 = 图标小方片 + 行文本；气泡/告警 = 精修面板。
+ * 9. Agent 执行环节（DSH 过程折叠 + run-events）
  * ========================================================================= */
-
-/* 去掉编号时间线（::before 竖线 / ::after 阶段序号） */
-.reasoning-stream {
-    gap: 10px;
-    counter-reset: none;
-}
-.reasoning-stream__phase {
-    padding: 0;
-    gap: 10px;
-}
-.reasoning-stream__phase::before,
-.reasoning-stream__phase::after {
-    content: none !important;
-    display: none;
-}
-.reasoning-stream--live .reasoning-stream__phase--current::before {
-    display: none;
-}
-.reasoning-stream__phase--pulsing {
-    animation: none;
-}
-
-/* 阶段头：极简一行（无卡片边框/底色，当前阶段仅 label 变橙） */
-.reasoning-stream__phase-header {
-    padding: 1px 2px;
-    border: none;
-    background: transparent;
-    gap: 8px;
-}
-.reasoning-stream__phase--current .reasoning-stream__phase-header {
-    border: none;
-    background: transparent;
-}
-.reasoning-stream__phase--current .reasoning-stream__phase-header::before {
-    content: none;
-}
-.reasoning-stream__phase-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    border: none;
-    background: transparent;
-    padding: 0;
-    cursor: pointer;
-    font-family: inherit;
-    min-width: 0;
-}
-.reasoning-stream__phase-toggle-arrow {
-    display: inline-flex;
-    color: var(--text-muted);
-    flex-shrink: 0;
-}
-.reasoning-stream__phase-label {
-    font-family: var(--font-sans);
-    font-size: 13px;
-    font-weight: 600;
-    text-transform: none;
-    letter-spacing: 0;
-    color: var(--text);
-}
-.reasoning-stream__phase--current .reasoning-stream__phase-label {
-    color: var(--accent);
-}
-
-.reasoning-stream__phase-summary {
-    font-size: 11px;
-    color: var(--text-muted);
-    font-style: italic;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 40ch;
-}
-
-.reasoning-stream__live-chip {
-    color: var(--accent);
-    background: transparent;
-    border: none;
-    letter-spacing: 0.05em;
-    font-size: 9px;
-    padding: 1px 6px;
-}
-.reasoning-stream__live-chip-dot {
-    background: var(--accent);
-}
-
-/* 事件列表：紧凑的行堆叠 */
-.reasoning-stream__phase-events {
-    gap: 1px;
-    padding: 0 2px;
-}
 
 /* 事件卡片：极简行 + 纯图标 */
 .run-event-card {
@@ -1544,38 +1492,12 @@ button {
     border: 1px solid var(--border);
 }
 
-/* 极简：思考占位骨架 */
-.reasoning-live-placeholder {
-    padding: 8px 10px;
-    border-radius: 8px;
+.dsh-process--placeholder .dsh-process-box--skeleton {
     border: none;
     background: transparent;
-    margin-bottom: 0;
+    padding: 4px 0;
 }
-.reasoning-live-placeholder__header {
-    margin-bottom: 6px;
-    gap: 8px;
-}
-.reasoning-live-placeholder__title {
-    font-size: 12.5px;
-    font-weight: 600;
-    color: var(--text);
-}
-.reasoning-live-placeholder__phase {
-    font-size: 11.5px;
-    color: var(--accent);
-    font-weight: 600;
-}
-.reasoning-live-placeholder__hint {
-    margin: 0 0 8px;
-    font-size: 11.5px;
-}
-.reasoning-live-placeholder__skeleton {
-    gap: 6px;
-}
-.reasoning-live-placeholder__bar {
-    height: 8px;
-    border-radius: 4px;
+.dsh-skel-line {
     background: rgba(var(--text-rgb), 0.08);
     animation: none;
 }

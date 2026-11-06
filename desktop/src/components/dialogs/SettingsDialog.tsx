@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ContextMemorySidebar } from "../ContextMemorySidebar";
 import { Icon } from "../Icon";
 import { useTheme, ACCENT_PRESETS } from "../../context/ThemeContext";
 import { useAppState } from "../../context/AppStateContext";
@@ -18,7 +17,10 @@ import {
   type LLMBackendId,
   type ProviderCatalogEntry,
 } from "../../lib/apiConfig";
-import type { BridgeResponse, MyComsolModel } from "../../lib/types";
+import type { BridgeResponse, MyComsolModel, SettingsSection } from "../../lib/types";
+import { CaseLibraryPage } from "../CaseLibraryPage";
+import { SkillsSystemPage } from "../SkillsSystemPage";
+import { OpsCatalogPage } from "../OpsCatalogPage";
 import {
   clearCaseLibraryRecords,
   loadCaseLibraryRecords,
@@ -26,14 +28,15 @@ import {
   type CaseLibraryRecord,
 } from "../../lib/caseLibraryRecords";
 
-type SettingsTab = "theme" | "llm" | "comsol" | "memory" | "models";
-
-const TABS: { id: SettingsTab; label: string; icon: string }[] = [
-  { id: "theme", label: "主题", icon: "colorfilter" },
-  { id: "llm", label: "LLM 配置", icon: "cpu" },
-  { id: "comsol", label: "COMSOL 配置", icon: "3dcube" },
-  { id: "models", label: "模型管理", icon: "folder-2" },
-  { id: "memory", label: "记忆管理", icon: "note-2" },
+const TABS: { id: SettingsSection; label: string; icon: string; group: "config" | "library" }[] = [
+  { id: "theme", label: "主题", icon: "colorfilter", group: "config" },
+  { id: "llm", label: "LLM 配置", icon: "cpu", group: "config" },
+  { id: "comsol", label: "COMSOL 配置", icon: "3dcube", group: "config" },
+  { id: "models", label: "模型管理", icon: "folder-2", group: "config" },
+  { id: "memory", label: "记忆管理", icon: "note-2", group: "config" },
+  { id: "case-library", label: "案例库", icon: "book", group: "library" },
+  { id: "skills", label: "技能系统", icon: "flash", group: "library" },
+  { id: "ops", label: "操作清单", icon: "code-1", group: "library" },
 ];
 
 const PROVIDER_GROUP_LABELS: Record<ProviderCatalogEntry["group"], string> = {
@@ -110,7 +113,9 @@ export function SettingsDialog({
 
   const providerCatalog = useMemo(() => getProviderCatalog(), []);
 
-  const [activeTab, setActiveTab] = useState<SettingsTab>("theme");
+  const activeTab = state.settingsTab;
+  const setActiveTab = (tab: SettingsSection) =>
+    dispatch({ type: "SET_VIEW", view: "settings", settingsTab: tab });
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => loadApiConfig());
   const [memoryItems, setMemoryItems] = useState<string[]>([]);
   const [memoryStatus, setMemoryStatus] = useState("");
@@ -438,7 +443,7 @@ export function SettingsDialog({
           <h2 className="settings-dialog-title">设置中心</h2>
           {pageMode && (
             <p className="settings-hint">
-              集中管理案例库记录、技能系统、LLM 提供商、COMSOL 环境、主题与模型资产。
+              主题、模型、记忆，以及案例库、技能系统和 COMSOL 操作清单。
             </p>
           )}
         </div>
@@ -455,22 +460,32 @@ export function SettingsDialog({
       </header>
       <div className="settings-dialog-body">
         <nav className="settings-sidebar" aria-label="设置分类">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              className={`settings-sidebar-item ${
-                activeTab === tab.id ? "active" : ""
-              }`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              <Icon name={tab.icon} size={16} className="settings-sidebar-icon" />
-              <span className="settings-sidebar-label">{tab.label}</span>
-            </button>
+          {TABS.map((tab, index) => (
+            <span key={tab.id} className="settings-sidebar-slot">
+              {index > 0 && TABS[index - 1].group !== tab.group ? (
+                <span className="settings-sidebar-divider" />
+              ) : null}
+              <button
+                type="button"
+                className={`settings-sidebar-item ${
+                  activeTab === tab.id ? "active" : ""
+                }`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                <Icon name={tab.icon} size={16} className="settings-sidebar-icon" />
+                <span className="settings-sidebar-label">{tab.label}</span>
+              </button>
+            </span>
           ))}
         </nav>
 
-        <div className="settings-pane">
+        <div
+          className={`settings-pane${
+            activeTab === "case-library" || activeTab === "skills" || activeTab === "ops"
+              ? " settings-pane--fill"
+              : ""
+          }`}
+        >
           {activeTab === "theme" && (
             <div className="settings-card">
               {renderRow(
@@ -847,16 +862,9 @@ export function SettingsDialog({
           {activeTab === "memory" && (
             <>
               <div className="settings-card">
-                <h3 className="settings-pane-title">记忆预览（Bridge）</h3>
-                <p className="settings-hint">
-                  展示当前会话在 Bridge 侧已整理的摘要，以及下一轮将注入提示词的上下文。需已选择会话且 Bridge 就绪；打开本页或切换到此标签时会自动尝试刷新。
-                </p>
-                <ContextMemorySidebar embedded />
-              </div>
-
-              <div className="settings-card">
+              <h3 className="settings-pane-title">本会话记住的内容</h3>
               <p className="settings-hint">
-                当前会话的摘要记忆会参与后续推理。这里改为分条整理，每条记忆单独维护，保存时会自动整理成项目符号列表。
+                这些条目会带入后续建模。改完后保存即可。
               </p>
 
               {renderRow(
@@ -906,13 +914,6 @@ export function SettingsDialog({
                     </div>
                   ))}
                 </div>
-              </div>
-
-              <div className="settings-field">
-                <label>保存预览</label>
-                <pre className="settings-memory-preview">
-                  {serializedMemoryText || "暂无可保存的记忆内容。"}
-                </pre>
               </div>
 
               {memoryStatus && <div className="settings-status">{memoryStatus}</div>}
@@ -1054,6 +1055,9 @@ export function SettingsDialog({
               </div>
             </div>
           )}
+          {activeTab === "case-library" && <CaseLibraryPage />}
+          {activeTab === "skills" && <SkillsSystemPage />}
+          {activeTab === "ops" && <OpsCatalogPage />}
         </div>
       </div>
     </div>

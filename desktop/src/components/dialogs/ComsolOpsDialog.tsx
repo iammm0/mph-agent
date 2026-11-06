@@ -121,9 +121,6 @@ export function ComsolOpsDialog({ onClose }: { onClose: () => void }) {
               {group.items.map((item, idx) => (
                 <div key={`${group.category}-${item.label}-${idx}`} className="dialog-row">
                   <span className="dialog-row-key">{item.label}</span>
-                  <span className="dialog-row-val">
-                    {item.recommended_action} · {item.invoke_mode}
-                  </span>
                 </div>
               ))}
             </div>

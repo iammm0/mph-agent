@@ -176,15 +176,6 @@ export function AssistantMessage({ message }: { message: ChatMessage }) {
       </div>
       {showReasoningPanel && (
         <div className="assistant-msg-reasoning">
-          <p className="assistant-msg-reasoning-title">
-            推理与构建流程
-            {isCurrentBusy && (
-              <span className="assistant-msg-reasoning-live" title="正在进行">
-                <span className="assistant-msg-reasoning-live__dot" aria-hidden />
-                进行中
-              </span>
-            )}
-          </p>
           {isCurrentBusy && !hasEvents && (
             <ReasoningLivePlaceholder phaseHint={phaseLabel} />
           )}

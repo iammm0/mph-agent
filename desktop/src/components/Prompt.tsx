@@ -215,10 +215,6 @@ export function Prompt() {
       activeInputText,
     ]
   );
-  const contextFillPercent =
-    contextUsage.usedTokens > 0
-      ? Math.max(2, contextUsage.percent)
-      : contextUsage.percent;
   const contextMeterTitle = [
     `上下文窗口估算：${contextUsage.windowSourceLabel}`,
     `当前模型：${contextUsage.providerLabel} · ${contextUsage.modelLabel}`,
@@ -247,28 +243,6 @@ export function Prompt() {
           </button>
         </div>
       )}
-      <div className="prompt-toolbar">
-        {modeToast && <div className="prompt-mode-toast">{modeToast}</div>}
-        <div
-          className="prompt-mode-segment"
-          role="group"
-          aria-label="工作模式"
-        >
-          {PROMPT_MODE_ITEMS.map((item) => (
-            <button
-              key={item.mode}
-              type="button"
-              className={`prompt-mode-btn ${item.mode} ${state.mode === item.mode ? "active" : ""}`}
-              title={item.title}
-              onClick={() => applyMode(item.mode)}
-              disabled={busy}
-            >
-              <Icon name={item.icon} size={13} />
-              {item.label}
-            </button>
-          ))}
-        </div>
-      </div>
       <div
         className={`prompt-wrapper${busy ? " prompt-wrapper--busy" : ""}`}
         style={{ position: "relative" }}
@@ -306,7 +280,6 @@ export function Prompt() {
           )}
         </div>
         <div className="prompt-input-wrap">
-          <span className="prompt-glyph" aria-hidden>&gt;</span>
           <textarea
             ref={textareaRef}
             className="prompt-input"
@@ -341,44 +314,25 @@ export function Prompt() {
           </button>
         )}
       </div>
-      <div
-        className={`prompt-context-meter ${contextUsage.status}`}
-        title={contextMeterTitle}
-      >
-        <span
-          className="prompt-context-meter__icon"
-          aria-hidden="true"
-          style={{
-            backgroundImage: `conic-gradient(var(--context-meter-color) ${Math.round(
-              contextUsage.ratio * 360
-            )}deg, color-mix(in srgb, var(--context-meter-color) 18%, transparent) 0deg)`,
-          }}
-        >
-          <span className="prompt-context-meter__icon-core" />
+      <div className={`composer-status ${contextUsage.status}`}>
+        {modeToast ? <span className="composer-status__toast">{modeToast}</span> : null}
+        <div className="composer-status__modes" role="group" aria-label="工作模式">
+          {PROMPT_MODE_ITEMS.map((item) => (
+            <button
+              key={item.mode}
+              type="button"
+              className={`prompt-mode-btn ${item.mode} ${state.mode === item.mode ? "active" : ""}`}
+              title={item.title}
+              onClick={() => applyMode(item.mode)}
+              disabled={busy}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <span className="composer-status__meta" title={contextMeterTitle}>
+          {contextUsage.modelLabel} · ctx {contextUsage.percent}%
         </span>
-        <div className="prompt-context-meter__copy">
-          <span className="prompt-context-meter__title">
-            上下文 {contextUsage.percent}% 已用
-          </span>
-          <span className="prompt-context-meter__model">
-            {contextUsage.providerLabel} · {contextUsage.modelLabel}
-          </span>
-        </div>
-        <div className="prompt-context-meter__bar" aria-hidden="true">
-          <span
-            className="prompt-context-meter__bar-fill"
-            style={{ width: `${contextFillPercent}%` }}
-          />
-        </div>
-        <div className="prompt-context-meter__numbers">
-          <span>
-            {formatCompactTokenCount(contextUsage.usedTokens)} /{" "}
-            {formatCompactTokenCount(contextUsage.maxTokens)}
-          </span>
-          <span>
-            余量 {formatCompactTokenCount(contextUsage.safeRemainingTokens)}
-          </span>
-        </div>
       </div>
     </div>
   );

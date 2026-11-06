@@ -88,19 +88,6 @@ function pickSinglePath(value: string | string[] | null): string {
   return "";
 }
 
-function formatDateTime(value?: string | null): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 const FEATURED_SKILL_DETAILS: Record<string, SkillDetailBlueprint> = {
   "comsol-basics": {
     domain: "基础规范",
@@ -645,26 +632,19 @@ export function SkillsSystemPage() {
             className="skills-showcase-tile"
             onClick={() => openSkillDetail(item.id)}
           >
-            <div className="skills-showcase-top">
-              <div className="skills-showcase-body">
-                <span className="skills-showcase-label">{item.categoryLabel}</span>
-                <h3 className="skills-showcase-title">{item.name}</h3>
-                <p className="skills-showcase-summary">{item.description || item.summary}</p>
+            <div className="skills-showcase-body">
+              <h3 className="skills-showcase-title">{item.name}</h3>
+              <p className="skills-showcase-summary">{item.description || item.summary}</p>
+            </div>
+            {item.triggers.length > 0 ? (
+              <div className="skill-card-tags">
+                {item.triggers.slice(0, 3).map((tag) => (
+                  <span key={`${item.id}-${tag}`} className="skill-card-tag">
+                    {tag}
+                  </span>
+                ))}
               </div>
-              <span className={`skills-chip skills-chip--${item.badgeTone}`}>{item.badgeText}</span>
-            </div>
-            <div className="skill-card-tags">
-              {item.tags.slice(0, 4).map((tag) => (
-                <span key={`${item.id}-${tag}`} className="skill-card-tag">
-                  {tag}
-                </span>
-              ))}
-            </div>
-            <div className="skills-showcase-meta">
-              <span>{item.sourceLabel}</span>
-              <span>{item.updatedAt ? `更新于 ${formatDateTime(item.updatedAt)}` : "查看详情"}</span>
-            </div>
-            <div className="skills-showcase-footer">查看该领域的建模与调试思路</div>
+            ) : null}
           </button>
         ))}
 
@@ -855,35 +835,22 @@ export function SkillsSystemPage() {
         <section className="skills-detail-hero">
           <div className="skills-detail-hero__head">
             <div>
-              <span className="skills-page-kicker">{selectedSkillDetail.domain}</span>
               <h3 className="skills-page-title">{selectedSkill.name}</h3>
-              <p className="skills-page-desc">{selectedSkillDetail.summary}</p>
+              <p className="skills-page-desc">
+                {selectedSkill.description || selectedSkillDetail.summary}
+              </p>
             </div>
-            <span className={`skills-chip skills-chip--${selectedSkill.badgeTone}`}>{selectedSkill.badgeText}</span>
           </div>
 
-          <div className="skill-card-tags">
-            {selectedSkill.tags.map((tag) => (
-              <span key={`${selectedSkill.id}-${tag}`} className="skill-card-tag">
-                {tag}
-              </span>
-            ))}
-          </div>
-
-          <div className="skills-detail-stats">
-            <article className="skills-detail-stat">
-              <span className="skills-detail-stat__label">领域焦点</span>
-              <strong>{selectedSkillDetail.focus}</strong>
-            </article>
-            <article className="skills-detail-stat">
-              <span className="skills-detail-stat__label">最适合</span>
-              <strong>{selectedSkillDetail.bestFor}</strong>
-            </article>
-            <article className="skills-detail-stat">
-              <span className="skills-detail-stat__label">典型交付</span>
-              <strong>{selectedSkillDetail.deliverable}</strong>
-            </article>
-          </div>
+          {selectedSkill.triggers.length > 0 ? (
+            <div className="skill-card-tags">
+              {selectedSkill.triggers.map((tag) => (
+                <span key={`${selectedSkill.id}-trigger-${tag}`} className="skill-card-tag">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          ) : null}
 
           <div className="skills-page-actions">
             {selectedSkill.path && (
@@ -913,80 +880,26 @@ export function SkillsSystemPage() {
           </div>
         </section>
 
-        <div className="skills-detail-grid">
-          <section className="skills-detail-panel">
-            <h4>建模路径</h4>
-            <ol className="skills-detail-list">
-              {selectedSkillDetail.modelingPath.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ol>
-          </section>
-
-          <section className="skills-detail-panel">
-            <h4>调试路径</h4>
-            <ol className="skills-detail-list">
-              {selectedSkillDetail.debuggingPath.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ol>
-          </section>
-
-          <section className="skills-detail-panel">
-            <h4>典型交付物</h4>
-            <ul className="skills-detail-list">
-              {selectedSkillDetail.deliverables.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </section>
-
-          <section className="skills-detail-panel">
-            <h4>可直接扩写的提示</h4>
-            <ul className="skills-detail-list">
-              {selectedSkillDetail.prompts.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </section>
-
-          <section className="skills-detail-panel">
-            <h4>触发场景</h4>
-            {selectedSkill.triggers.length > 0 ? (
-              <div className="skill-card-tags">
-                {selectedSkill.triggers.map((item) => (
-                  <span key={`${selectedSkill.id}-trigger-${item}`} className="skill-card-tag">
-                    {item}
-                  </span>
+        {FEATURED_SKILL_DETAILS[selectedSkill.slug] ? (
+          <div className="skills-detail-grid">
+            <section className="skills-detail-panel">
+              <h4>怎么建模</h4>
+              <ol className="skills-detail-list">
+                {selectedSkillDetail.modelingPath.map((item) => (
+                  <li key={item}>{item}</li>
                 ))}
-              </div>
-            ) : (
-              <p className="skills-detail-copy">当前 skill 暂未声明触发词，建议补充典型任务关键词。</p>
-            )}
-          </section>
-
-          <section className="skills-detail-panel">
-            <h4>原始 Skill 信息</h4>
-            <div className="skills-raw-meta">
-              <div>
-                <span>摘要</span>
-                <strong>{selectedSkill.preview || selectedSkill.description || "暂无原始摘要"}</strong>
-              </div>
-              <div>
-                <span>作者</span>
-                <strong>{selectedSkill.author || "未设置"}</strong>
-              </div>
-              <div>
-                <span>版本</span>
-                <strong>{selectedSkill.version || "未设置"}</strong>
-              </div>
-              <div>
-                <span>更新时间</span>
-                <strong>{formatDateTime(selectedSkill.updatedAt) || "未知"}</strong>
-              </div>
-            </div>
-          </section>
-        </div>
+              </ol>
+            </section>
+            <section className="skills-detail-panel">
+              <h4>出了问题先看</h4>
+              <ol className="skills-detail-list">
+                {selectedSkillDetail.debuggingPath.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ol>
+            </section>
+          </div>
+        ) : null}
       </div>
     );
   };

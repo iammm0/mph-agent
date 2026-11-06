@@ -31,6 +31,17 @@ export interface RunEvent {
 export type AgentMode = "discuss" | "plan" | "run";
 export type AppView = "session" | "case-library" | "skills-system" | "ops-catalog" | "settings";
 
+/** 设置页内的分区。案例库、技能和操作清单都在这里。 */
+export type SettingsSection =
+  | "theme"
+  | "llm"
+  | "comsol"
+  | "memory"
+  | "models"
+  | "case-library"
+  | "skills"
+  | "ops";
+
 /** 对话框类型 */
 export type DialogType =
   | null

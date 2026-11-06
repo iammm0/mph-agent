@@ -6,26 +6,31 @@ function getOpKey(item: OpsCatalogItem): string {
   return `${item.invoke_mode}:${item.category}:${item.label}:${item.recommended_action}`;
 }
 
-/** 清单页仅展示官方 API 包装，统一用此文案替代「原生 / Wrapper」二分。 */
-function comsolOpKindLabel(): string {
-  return "官方 API";
+function schemaTypeLabel(value: unknown): string {
+  if (typeof value === "string") return value.replace(/\?$/, "");
+  return "";
 }
 
-function comsolOpKindHint(): string {
-  return "经 Java API 包装层暴露的 COMSOL 可调用方法；通过 call_official_api 或对应包装名调度。";
-}
-
-function countSchemaFields(schema: OpsCatalogItem["params_schema"]): number {
-  return schema && typeof schema === "object" ? Object.keys(schema).length : 0;
-}
-
-function formatSchemaValue(value: unknown): string {
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
+function calledMethod(item: OpsCatalogItem): string {
+  const example = item.examples?.[0];
+  const owner = typeof example?.owner === "string" ? example.owner : "";
+  const method = typeof example?.method_name === "string" ? example.method_name : "";
+  if (owner && method) return `${owner}.${method}`;
+  if (method) return method;
+  if (item.recommended_action && item.recommended_action !== "call_official_api") {
+    return item.recommended_action;
   }
+  return "";
+}
+
+const GENERIC_WRAPPER_PARAMS = new Set(["model_path", "args", "target_path"]);
+
+function visibleParams(item: OpsCatalogItem): Array<{ name: string; type: string }> {
+  const schema = item.params_schema;
+  if (!schema || typeof schema !== "object") return [];
+  return Object.entries(schema)
+    .filter(([name]) => !GENERIC_WRAPPER_PARAMS.has(name))
+    .map(([name, value]) => ({ name, type: schemaTypeLabel(value) }));
 }
 
 function buildSearchText(item: OpsCatalogItem): string {
@@ -173,7 +178,7 @@ export function OpsCatalogPage() {
         <input
           className="case-library-search"
           type="text"
-          placeholder="搜索 category / label / action / param..."
+          placeholder="搜索操作名或方法"
           value={searchInput}
           onChange={(event) => setSearchInput(event.target.value)}
           onKeyDown={(event) => {
@@ -220,8 +225,7 @@ export function OpsCatalogPage() {
                   <div className="ops-item-list">
                     {group.items.map((item) => {
                       const itemKey = getOpKey(item);
-                      const schemaCount = countSchemaFields(item.params_schema);
-                      const exampleCount = Array.isArray(item.examples) ? item.examples.length : 0;
+                      const method = calledMethod(item);
                       const active = itemKey === selectedKey;
 
                       return (
@@ -231,20 +235,8 @@ export function OpsCatalogPage() {
                           className={`ops-item-card ${active ? "is-active" : ""}`}
                           onClick={() => setSelectedKey(itemKey)}
                         >
-                          <div className="ops-item-card__head">
-                            <div className="ops-item-card__body">
-                              <span className="ops-item-card__title">{item.label}</span>
-                              <span className="ops-item-card__action">{item.recommended_action}</span>
-                            </div>
-                            <span className={`ops-mode-chip ops-mode-chip--${item.invoke_mode}`}>
-                              {comsolOpKindLabel()}
-                            </span>
-                          </div>
-                          <div className="ops-item-card__meta">
-                            <span>{group.category}</span>
-                            <span>参数 {schemaCount}</span>
-                            <span>示例 {exampleCount}</span>
-                          </div>
+                          <span className="ops-item-card__title">{item.label}</span>
+                          {method ? <span className="ops-item-card__action">{method}</span> : null}
                         </button>
                       );
                     })}
@@ -259,62 +251,29 @@ export function OpsCatalogPage() {
               <>
                 <div className="ops-detail-head">
                   <div>
-                    <span className="skills-page-kicker">操作详情</span>
+                    <span className="skills-page-kicker">{selectedItem.category}</span>
                     <h3 className="skills-page-title">{selectedItem.label}</h3>
-                    <p className="skills-page-desc">
-                      {selectedItem.category} · {comsolOpKindHint()}
-                    </p>
-                  </div>
-                  <span className={`ops-mode-chip ops-mode-chip--${selectedItem.invoke_mode}`}>
-                    {comsolOpKindLabel()}
-                  </span>
-                </div>
-
-                <div className="ops-detail-stats">
-                  <div className="ops-detail-stat">
-                    <span className="ops-detail-stat__label">分类</span>
-                    <strong>{selectedItem.category}</strong>
-                  </div>
-                  <div className="ops-detail-stat">
-                    <span className="ops-detail-stat__label">推荐 Action</span>
-                    <strong>{selectedItem.recommended_action}</strong>
-                  </div>
-                  <div className="ops-detail-stat">
-                    <span className="ops-detail-stat__label">参数项数</span>
-                    <strong>{countSchemaFields(selectedItem.params_schema)}</strong>
+                    {calledMethod(selectedItem) ? (
+                      <p className="skills-page-desc">{calledMethod(selectedItem)}</p>
+                    ) : null}
                   </div>
                 </div>
 
-                <section className="ops-detail-section">
-                  <h4>参数清单</h4>
-                  {selectedItem.params_schema && Object.keys(selectedItem.params_schema).length > 0 ? (
+                {visibleParams(selectedItem).length > 0 ? (
+                  <section className="ops-detail-section">
+                    <h4>需要填写</h4>
                     <div className="ops-schema-list">
-                      {Object.entries(selectedItem.params_schema).map(([name, value]) => (
-                        <div key={name} className="ops-schema-item">
-                          <span className="ops-schema-item__name">{name}</span>
-                          <code className="ops-schema-item__value">{formatSchemaValue(value)}</code>
+                      {visibleParams(selectedItem).map((param) => (
+                        <div key={param.name} className="ops-schema-item">
+                          <span className="ops-schema-item__name">{param.name}</span>
+                          {param.type ? <span className="ops-schema-item__value">{param.type}</span> : null}
                         </div>
                       ))}
                     </div>
-                  ) : (
-                    <p className="ops-detail-empty">当前操作没有记录参数 schema。</p>
-                  )}
-                </section>
-
-                <section className="ops-detail-section">
-                  <h4>调用示例</h4>
-                  {Array.isArray(selectedItem.examples) && selectedItem.examples.length > 0 ? (
-                    <div className="ops-example-list">
-                      {selectedItem.examples.map((example, index) => (
-                        <pre key={`${getOpKey(selectedItem)}-example-${index}`} className="ops-json-block">
-                          {JSON.stringify(example, null, 2)}
-                        </pre>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="ops-detail-empty">当前操作没有记录调用示例。</p>
-                  )}
-                </section>
+                  </section>
+                ) : (
+                  <p className="ops-detail-empty">这项操作按名称直接调用，没有额外要填的参数。</p>
+                )}
               </>
             ) : (
               <div className="case-library-empty">请选择一条操作查看详细信息。</div>

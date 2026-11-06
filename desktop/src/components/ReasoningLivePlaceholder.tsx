@@ -1,4 +1,4 @@
-/** 尚无 bridge 事件时，提示推理正在进行（避免空白像卡死） */
+/** 尚无 bridge 事件时，仿 DSH「Deep diving…」状态行 */
 
 interface ReasoningLivePlaceholderProps {
   phaseHint: string;
@@ -7,27 +7,22 @@ interface ReasoningLivePlaceholderProps {
 export function ReasoningLivePlaceholder({ phaseHint }: ReasoningLivePlaceholderProps) {
   return (
     <div
-      className="reasoning-live-placeholder"
+      className="dsh-process dsh-process--live dsh-process--placeholder"
       role="status"
       aria-live="polite"
       aria-busy="true"
     >
-      <div className="reasoning-live-placeholder__header">
-        <span className="reasoning-live-placeholder__dots" aria-hidden>
-          <span className="reasoning-live-placeholder__dot" />
-          <span className="reasoning-live-placeholder__dot" />
-          <span className="reasoning-live-placeholder__dot" />
-        </span>
-        <span className="reasoning-live-placeholder__title">推理进行中</span>
-        <span className="reasoning-live-placeholder__phase">{phaseHint}</span>
+      <div className="dsh-process__status">
+        <span className="dsh-process__status-dot" aria-hidden />
+        <span className="dsh-process__status-text">深入思考中…</span>
+        {phaseHint ? <span className="dsh-process__status-phase">{phaseHint}</span> : null}
       </div>
-      <p className="reasoning-live-placeholder__hint">
-        正在等待模型与执行层输出，流式内容将出现在下方。
-      </p>
-      <div className="reasoning-live-placeholder__skeleton" aria-hidden>
-        <div className="reasoning-live-placeholder__bar" />
-        <div className="reasoning-live-placeholder__bar reasoning-live-placeholder__bar--mid" />
-        <div className="reasoning-live-placeholder__bar reasoning-live-placeholder__bar--short" />
+      <div className="dsh-process-box dsh-process-box--live dsh-process-box--skeleton" aria-hidden>
+        <div className="dsh-process-box__items">
+          <div className="dsh-skel-line" />
+          <div className="dsh-skel-line dsh-skel-line--mid" />
+          <div className="dsh-skel-line dsh-skel-line--short" />
+        </div>
       </div>
     </div>
   );

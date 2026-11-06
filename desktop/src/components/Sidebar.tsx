@@ -32,6 +32,7 @@ export function Sidebar() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [newGroupName, setNewGroupName] = useState("");
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState("");
   const [draggingConvId, setDraggingConvId] = useState<string | null>(null);
@@ -118,6 +119,7 @@ export function Sidebar() {
     if (!name) return;
     dispatch({ type: "ADD_CONVERSATION_GROUP", name });
     setNewGroupName("");
+    setCreatingGroup(false);
   }, [newGroupName, dispatch]);
 
   const submitRenameGroup = useCallback(() => {
@@ -170,21 +172,36 @@ export function Sidebar() {
       {!collapsed && (
         <>
           <div className="sidebar-groups-config">
-            <div className="sidebar-section-title">Sessions</div>
-            <div className="sidebar-group-create">
-              <input
-                className="sidebar-group-input"
-                placeholder="新集合名称"
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") addGroup();
-                }}
-              />
-              <button type="button" className="sidebar-group-add" onClick={addGroup}>
-                新建
+            <div className="sidebar-section-title">会话</div>
+            {creatingGroup ? (
+              <div className="sidebar-group-create">
+                <input
+                  className="sidebar-group-input"
+                  placeholder="集合名称"
+                  value={newGroupName}
+                  autoFocus
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") addGroup();
+                    if (e.key === "Escape") {
+                      setCreatingGroup(false);
+                      setNewGroupName("");
+                    }
+                  }}
+                />
+                <button type="button" className="sidebar-group-add" onClick={addGroup}>
+                  确定
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="sidebar-group-add sidebar-group-add--quiet"
+                onClick={() => setCreatingGroup(true)}
+              >
+                新建集合
               </button>
-            </div>
+            )}
           </div>
           <div className="sidebar-list">
             <div
@@ -413,6 +430,19 @@ export function Sidebar() {
           </div>
         </>
       )}
+      <div className="sidebar-foot">
+        <button
+          type="button"
+          className={`sidebar-settings${state.view === "settings" ? " is-active" : ""}`}
+          onClick={() => dispatch({ type: "SET_VIEW", view: "settings" })}
+          title="设置"
+          aria-label="设置"
+          aria-current={state.view === "settings" ? "page" : undefined}
+        >
+          <Icon name="setting-2" size={16} />
+          {!collapsed && <span>设置</span>}
+        </button>
+      </div>
       <ConfirmDialog
         open={deleteConfirmId !== null}
         title="删除对话"

@@ -470,13 +470,24 @@ body {
     color: var(--text-muted);
 }
 
-.assistant-msg-reasoning-title,
-.system-msg {
+.system-msg,
+.dsh-process-box__phase,
+.dsh-process-item__kind {
     font-family: var(--font-mono);
     font-size: 11px;
     letter-spacing: var(--tracking-wide);
     text-transform: uppercase;
     color: var(--text-muted);
+}
+
+.dsh-process-box {
+    border-radius: 0;
+    background: var(--bg-menu);
+}
+
+.dsh-process__toggle {
+    border-radius: 0;
+    font-family: var(--font-mono);
 }
 
 .message-list-empty {
@@ -684,6 +695,9 @@ body {
 
 /* -------- 10. 卡片/通用容器圆角清零 ------------------------------------- */
 
+.dsh-process-box,
+.dsh-process-item__body,
+.dsh-process-item__head,
 .run-event-card,
 .run-event-bubble,
 .run-event-callout,

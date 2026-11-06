@@ -7,8 +7,8 @@ import {
   type ReactNode,
 } from "react";
 
-const STORAGE_KEY = "mph-agent-theme-v2";
-const LEGACY_STORAGE_KEY = "comsol-agent-theme";
+const STORAGE_KEY = "mph-agent-theme-v3";
+const LEGACY_STORAGE_KEYS = ["mph-agent-theme-v2", "comsol-agent-theme"];
 
 export type ThemeMode = "light" | "dark" | "system";
 
@@ -20,14 +20,18 @@ export function getSystemTheme(): ResolvedTheme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+/** 与 https://www.mphagent.site/ 品牌色对齐 */
+export const BRAND_ACCENT = "#00bffa";
+export const BRAND_NAVY = "#002b70";
+
 export const ACCENT_PRESETS: { name: string; value: string }[] = [
-  { name: "克劳德橙", value: "#d97757" },
-  { name: "暖金", value: "#dcc88a" },
-  { name: "古铜", value: "#c89a4a" },
-  { name: "苔绿", value: "#9ec48c" },
-  { name: "晨曦", value: "#e8d49a" },
-  { name: "复古红", value: "#c97a5e" },
-  { name: "深绿", value: "#5a8c6a" },
+  { name: "品牌青", value: BRAND_ACCENT },
+  { name: "深蓝", value: BRAND_NAVY },
+  { name: "天蓝", value: "#4f8cff" },
+  { name: "青碧", value: "#0891b2" },
+  { name: "苔绿", value: "#059669" },
+  { name: "琥珀", value: "#d97706" },
+  { name: "陶土", value: "#d97757" },
 ];
 
 export interface ThemeState {
@@ -41,46 +45,61 @@ interface ThemeContextValue extends ThemeState {
 }
 
 const defaultState: ThemeState = {
-  themeMode: "dark",
-  accentColor: ACCENT_PRESETS[0].value,
+  themeMode: "light",
+  accentColor: BRAND_ACCENT,
 };
 
-const LEGACY_TOKYO_NIGHT_ACCENTS = new Set(
+/** 旧主题残留强调色 → 迁到官网品牌青 */
+const LEGACY_NON_BRAND_ACCENTS = new Set(
   [
+    "#d97757",
+    "#dcc88a",
+    "#c89a4a",
+    "#9ec48c",
+    "#e8d49a",
+    "#c97a5e",
+    "#5a8c6a",
     "#2563eb",
     "#7c3aed",
     "#0891b2",
     "#059669",
     "#ea580c",
     "#dc2626",
+    "#2f4a6f",
+    "#1e3a5f",
   ].map((s) => s.toLowerCase())
 );
+
+function normalizeAccent(raw: string | undefined): string {
+  if (typeof raw === "string" && /^#[0-9A-Fa-f]{6}$/.test(raw)) {
+    if (LEGACY_NON_BRAND_ACCENTS.has(raw.toLowerCase())) return BRAND_ACCENT;
+    return raw;
+  }
+  return defaultState.accentColor;
+}
 
 function loadTheme(): ThemeState {
   try {
     let raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw && LEGACY_STORAGE_KEY) {
-      raw = localStorage.getItem(LEGACY_STORAGE_KEY);
-      if (raw) {
-        localStorage.setItem(STORAGE_KEY, raw);
-        localStorage.removeItem(LEGACY_STORAGE_KEY);
+    if (!raw) {
+      for (const key of LEGACY_STORAGE_KEYS) {
+        raw = localStorage.getItem(key);
+        if (raw) {
+          localStorage.setItem(STORAGE_KEY, raw);
+          localStorage.removeItem(key);
+          break;
+        }
       }
     }
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<ThemeState>;
       const mode = parsed.themeMode;
-      const rawAccent =
-        typeof parsed.accentColor === "string" &&
-        /^#[0-9A-Fa-f]{6}$/.test(parsed.accentColor)
-          ? parsed.accentColor
-          : defaultState.accentColor;
-      const accent = LEGACY_TOKYO_NIGHT_ACCENTS.has(rawAccent.toLowerCase())
-        ? defaultState.accentColor
-        : rawAccent;
       return {
         themeMode:
-          mode === "dark" || mode === "system" ? mode : "light",
-        accentColor: accent,
+          mode === "dark" || mode === "system" || mode === "light"
+            ? mode
+            : defaultState.themeMode,
+        accentColor: normalizeAccent(parsed.accentColor),
       };
     }
   } catch {
@@ -89,13 +108,29 @@ function loadTheme(): ThemeState {
   return defaultState;
 }
 
+function hexToRgb(hex: string): string {
+  const h = hex.replace("#", "");
+  if (h.length !== 6) return "0, 191, 250";
+  const n = parseInt(h, 16);
+  return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+}
+
+function applyAccent(accent: string) {
+  const root = document.documentElement;
+  root.style.setProperty("--accent", accent);
+  root.style.setProperty("--accent-rgb", hexToRgb(accent));
+  root.style.setProperty("--primary", accent);
+  root.style.setProperty("--primary-rgb", hexToRgb(accent));
+  root.style.setProperty("--border-active", accent);
+}
+
 export function initTheme(): void {
   const state = loadTheme();
   const root = document.documentElement;
   const resolved =
     state.themeMode === "system" ? getSystemTheme() : state.themeMode;
   root.setAttribute("data-theme", resolved);
-  root.style.setProperty("--accent", state.accentColor);
+  applyAccent(state.accentColor);
 }
 
 function saveTheme(state: ThemeState) {
@@ -132,7 +167,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const resolved: ResolvedTheme =
       state.themeMode === "system" ? getSystemTheme() : state.themeMode;
     root.setAttribute("data-theme", resolved);
-    root.style.setProperty("--accent", state.accentColor);
+    applyAccent(state.accentColor);
   }, [state.themeMode, state.accentColor]);
 
   useEffect(() => {
