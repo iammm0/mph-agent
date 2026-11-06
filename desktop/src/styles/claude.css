@@ -615,13 +615,13 @@ body {
     color: var(--text-muted);
 }
 
-/* 快速案例: Claude 式卡片网格 */
+/* 快速案例: 紧凑芯片 */
 .quick-prompts {
     width: 100%;
-    max-width: 720px;
+    max-width: 560px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 0;
 }
 .quick-prompts-title {
     font-size: 11px;
@@ -629,62 +629,30 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--text-muted);
-    margin: 0 0 2px;
+    margin: 0;
 }
-.quick-prompts-details {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--bg-panel);
-    overflow: hidden;
-    transition: border-color 0.15s;
-}
-.quick-prompts-details:hover {
-    border-color: var(--border-strong);
-}
-.quick-prompts-details > summary {
-    padding: 9px 14px;
-    list-style: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.quick-prompts-details > summary::-webkit-details-marker {
-    display: none;
-}
-.quick-prompts-details > summary::before {
-    content: "▸";
+.quick-prompts-hint {
+    margin: 4px 0 10px;
+    font-size: 12px;
+    line-height: 1.4;
     color: var(--text-muted);
-    font-size: 11px;
-    transition: transform 0.15s;
-}
-.quick-prompts-details[open] > summary::before {
-    transform: rotate(90deg);
-}
-.quick-prompts-details-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text);
-}
-.quick-prompts-details-hint {
-    font-size: 11px;
-    color: var(--text-muted);
-}
-.quick-prompts-details-body {
-    padding: 0 14px 12px;
 }
 .quick-prompts-grid {
-    gap: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
 }
 .quick-prompt-chip {
-    padding: 8px 12px;
+    padding: 6px 10px;
     border: 1px solid var(--border);
     border-radius: 8px;
     background: transparent;
     color: var(--text);
     font-size: 12px;
     font-family: var(--font-sans);
-    text-align: left;
+    line-height: 1.3;
+    text-align: center;
+    white-space: nowrap;
     cursor: pointer;
     transition: border-color 0.15s, background 0.15s, color 0.15s;
 }

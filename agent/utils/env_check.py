@@ -205,12 +205,11 @@ def check_environment() -> EnvCheckResult:
         except Exception as e:
             result.add_error(f"输出目录无法访问: {output_dir} ({e})")
     
-    # 5. 检查 Python 依赖（deepseek/kimi/openai-compatible 均使用 openai 客户端）
-    if backend in ["deepseek", "kimi", "openai-compatible"]:
-        if find_spec("openai") is not None:
-            result.add_info("openai 已安装")
-        else:
-            result.add_error("openai 未安装，请运行: pip install openai")
+    # 5. 检查 Python 依赖（各 LLM 后端统一经 LiteLLM）
+    if find_spec("litellm") is not None:
+        result.add_info("litellm 已安装")
+    else:
+        result.add_error("litellm 未安装，请运行: uv sync / pip install litellm")
     
     try:
         import requests

@@ -68,5 +68,5 @@ OLLAMA_MODEL=llama3
 
 ## 依赖说明
 
-- deepseek、kimi、openai-compatible 均通过 `openai` Python 包调用（`pip install openai`）
-- ollama 使用 HTTP 请求，需 `requests` 可用
+- 运行时统一通过开源 [LiteLLM](https://github.com/BerriAI/litellm) 调用各提供商（`deepseek/`、`moonshot/`、`ollama/`、`openai/` + `api_base`）
+- 桌面设置页仍用四类运行时后端映射到 LiteLLM；不再在项目内维护各厂商 HTTP 客户端

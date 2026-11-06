@@ -10,9 +10,17 @@ import {
   type QuickPromptItem,
 } from "../lib/types";
 
+const QUICK_PROMPT_ITEMS = QUICK_PROMPT_GROUPS.flatMap((group: QuickPromptGroup) =>
+  group.prompts.map((item: QuickPromptItem) => ({
+    ...item,
+    key: `${group.title}-${item.label}`,
+    tip: item.text || group.hint || item.label,
+  }))
+);
+
 export function MessageList() {
   const { messages, dispatch } = useAppState();
-  const { handleSubmit } = useBridge();
+  const { handleSubmit, triggerExtensionAction } = useBridge();
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -23,41 +31,29 @@ export function MessageList() {
     return (
       <div className="message-list">
         <div className="message-list-empty">
-          <p className="message-list-empty-hint">
-            点击下方牛顿环快速案例，系统会切换到执行模式并开始完整仿真建模。
-          </p>
           <div className="quick-prompts">
             <p className="quick-prompts-title">快速案例</p>
-            {QUICK_PROMPT_GROUPS.map((group: QuickPromptGroup) => (
-              <details key={group.title} className="quick-prompts-details" open>
-                <summary className="quick-prompts-details-summary">
-                  <span className="quick-prompts-details-title">{group.title}</span>
-                  {group.hint ? (
-                    <span className="quick-prompts-details-hint" title={group.hint}>
-                      {group.hint}
-                    </span>
-                  ) : null}
-                </summary>
-                <div className="quick-prompts-details-body">
-                  <div className="quick-prompts-grid">
-                    {group.prompts.map((item: QuickPromptItem) => (
-                      <button
-                        key={`${group.title}-${item.label}`}
-                        type="button"
-                        className="quick-prompt-chip"
-                        onClick={() => {
-                          dispatch({ type: "SET_MODE", mode: "run" });
-                          handleSubmit(item.text);
-                        }}
-                        title={item.text || item.label}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </details>
-            ))}
+            <p className="quick-prompts-hint">点击即进入执行并开始建模</p>
+            <div className="quick-prompts-grid">
+              {QUICK_PROMPT_ITEMS.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className="quick-prompt-chip"
+                  onClick={() => {
+                    if (item.extensionName) {
+                      void triggerExtensionAction(item.extensionName);
+                      return;
+                    }
+                    dispatch({ type: "SET_MODE", mode: "run" });
+                    handleSubmit(item.text);
+                  }}
+                  title={item.tip}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
