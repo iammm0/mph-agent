@@ -24,6 +24,7 @@ _early_log(f"cwd={os.getcwd()!r} executable={sys.executable!r}\n")
 try:
     from agent.run.actions import (
         do_run,
+        do_chat,
         do_plan,
         do_plan_mode,
         do_discuss,
@@ -156,6 +157,53 @@ def _handle(req: dict[str, Any]) -> None:
             pass
 
     try:
+        if cmd == "chat":
+            event_bus = EventBus()
+            event_bus.subscribe_all(_emit_event)
+            replied = False
+            try:
+                try:
+                    ok, msg, plan_dict, plan_confirmed, clarifying_questions, executed_run = (
+                        do_chat(
+                            user_input=(req.get("input") or "").strip(),
+                            conversation_id=req.get("conversation_id") or None,
+                            backend=req.get("backend") or None,
+                            api_key=req.get("api_key") or None,
+                            base_url=req.get("base_url") or None,
+                            ollama_url=req.get("ollama_url") or None,
+                            model=req.get("model") or None,
+                            output=req.get("output") or None,
+                            workspace_dir=req.get("workspace_dir") or None,
+                            skip_check=req.get("skip_check", False),
+                            verbose=req.get("verbose", False),
+                            clarifying_answers=req.get("clarifying_answers") or None,
+                            event_bus=event_bus,
+                        )
+                    )
+                    _reply(
+                        ok,
+                        msg,
+                        plan=plan_dict,
+                        plan_confirmed=plan_confirmed,
+                        clarifying_questions=clarifying_questions or [],
+                        plan_needs_clarification=bool(clarifying_questions),
+                        executed_run=executed_run,
+                    )
+                    replied = True
+                except Exception as e:
+                    if _bridge_debug():
+                        _debug_log("".join(traceback.format_exception(type(e), e, e.__traceback__)))
+                    _emit_event(Event(type=EventType.ERROR, data={"message": str(e)}))
+                    _reply(False, str(e))
+                    replied = True
+            finally:
+                if not replied:
+                    try:
+                        _reply(False, "chat 未返回响应即退出，请设置 COMSOL_AGENT_BRIDGE_DEBUG=1 查看日志")
+                    except Exception:
+                        pass
+            return
+
         if cmd == "run":
             event_bus = EventBus()
             event_bus.subscribe_all(_emit_event)

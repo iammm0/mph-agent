@@ -148,9 +148,6 @@ export interface MyComsolModel {
 /** 输入框「+」中的扩展功能项 */
 export type PromptExtensionName =
   | "help"
-  | "discuss"
-  | "plan"
-  | "run"
   | "case"
   | "api"
   | "exec"
@@ -170,9 +167,6 @@ export interface PromptExtensionItem {
 
 export const PROMPT_EXTENSION_ITEMS: PromptExtensionItem[] = [
   { name: "help", label: "帮助", description: "打开帮助面板", icon: "message-question" },
-  { name: "discuss", label: "切换到探讨", description: "切换到 Discuss，与 LLM 理清需求", icon: "message-bubble" },
-  { name: "plan", label: "切换到规划", description: "切换到 Plan，生成建模计划与澄清", icon: "task-square" },
-  { name: "run", label: "切换到执行", description: "切换到 Run，按需求调用 COMSOL 建模", icon: "play" },
   { name: "case", label: "读取 .mph 案例", description: "选择 .mph 文件并生成结构化案例摘要", icon: "document" },
   {
     name: "api",
@@ -181,7 +175,7 @@ export const PROMPT_EXTENSION_ITEMS: PromptExtensionItem[] = [
     icon: "command-square",
   },
   { name: "exec", label: "JSON 执行", description: "根据 JSON 创建模型", icon: "document-code" },
-  { name: "backend", label: "LLM 后端", description: "选择 LLM 后端", icon: "cpu" },
+  { name: "backend", label: "模型后端", description: "查看当前模型后端", icon: "cpu" },
   { name: "context", label: "上下文", description: "查看或清除对话历史", icon: "clock" },
   { name: "output", label: "输出设置", description: "设置默认输出文件名", icon: "folder-2" },
   { name: "demo", label: "演示示例", description: "触发内置示例", icon: "flash" },
@@ -192,17 +186,12 @@ export const PROMPT_EXTENSION_ITEMS: PromptExtensionItem[] = [
 /** 输入框「+」菜单：统一承载扩展功能入口 */
 export const PROMPT_PLUS_MENU_COMMANDS: PromptExtensionItem[] = PROMPT_EXTENSION_ITEMS;
 
-/** 工作模式切换（Discuss / Plan / Run） */
-export const PROMPT_MODE_ITEMS: Array<{
-  mode: AgentMode;
-  label: string;
-  title: string;
-  icon: string;
-}> = [
-  { mode: "discuss", label: "探讨", title: "Discuss：与 LLM 理清需求（不执行 COMSOL）", icon: "message-bubble" },
-  { mode: "plan", label: "规划", title: "Plan：生成建模计划与澄清", icon: "task-square" },
-  { mode: "run", label: "执行", title: "Run：按需求或已确认计划调用 COMSOL 建模", icon: "play" },
-];
+/** 流水线阶段只读展示文案（非用户切换控件） */
+export const AGENT_PHASE_LABELS: Record<AgentMode, { label: string; title: string; icon: string }> = {
+  discuss: { label: "探讨", title: "Agent 正在梳理需求", icon: "message-bubble" },
+  plan: { label: "规划", title: "Agent 正在生成/澄清建模计划", icon: "task-square" },
+  run: { label: "执行", title: "Agent 正在调用 COMSOL 建模", icon: "play" },
+};
 
 /** 常用场景快捷提示（MessageList 空状态） */
 export interface QuickPromptItem {
@@ -250,7 +239,7 @@ export interface UsageWorkflowStep {
 
 export const USAGE_WORKFLOW_HEADLINE = "使用流程";
 export const USAGE_WORKFLOW_INTRO =
-  "本客户端通过「对话 + 模式切换」驱动 COMSOL 自动化建模；按下面顺序操作即可上手。";
+  "本客户端通过自然语言对话驱动 COMSOL 自动化建模；Agent 会自动完成探讨、规划与执行。";
 
 export const USAGE_WORKFLOW_STEPS: UsageWorkflowStep[] = [
   {
@@ -261,15 +250,15 @@ export const USAGE_WORKFLOW_STEPS: UsageWorkflowStep[] = [
   },
   {
     step: 2,
-    title: "选择工作方式（可自由组合）",
+    title: "自动流水线",
     body:
-      "推荐：先切到探讨模式理清需求，再切到规划生成结构化计划，最后切到执行开始 COMSOL 建模。也可直接切到规划或执行；底部状态栏显示当前模式。",
+      "发送后 Agent 会自动梳理需求、生成建模计划并调用 COMSOL。底部状态栏只显示当前阶段，无需手动切换模式。",
   },
   {
     step: 3,
-    title: "澄清与执行",
+    title: "澄清时打断",
     body:
-      "在 Plan 阶段若弹出澄清问题，先选择选项再继续；确认计划后切换到 Run 开始自动建模。执行中可用「停止」中断。",
+      "若出现未知项或风险，会弹出澄清问题；答完后流水线自动继续执行。执行中可用「停止」中断。",
   },
   {
     step: 4,
@@ -289,7 +278,6 @@ export const USAGE_WORKFLOW_STEPS: UsageWorkflowStep[] = [
 export const USAGE_WORKFLOW_SHORTCUTS: QuickPromptItem[] = [
   { label: "帮助", text: "", extensionName: "help" },
   { label: "环境诊断", text: "", extensionName: "doctor" },
-  { label: "切换到规划", text: "", extensionName: "plan" },
 ];
 
 /** 快捷提示：面向案例级 3D 多物理场模型的快捷构建指令 */

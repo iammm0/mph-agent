@@ -553,7 +553,8 @@ def do_plan_mode(
     event_bus: Optional[EventBus] = None,
 ) -> Tuple[bool, str, Optional[Dict[str, Any]], bool, Optional[List[Dict[str, Any]]]]:
     """
-    规划阶段：基于 finalized 讨论卡生成 plan.json + plan_readable.md，并执行澄清闭环。
+    规划阶段：基于讨论卡（可选）或当前输入生成 plan.json + plan_readable.md，并执行澄清闭环。
+    改写/重建已确认计划时会作废 plan_confirmed。
 
     Returns:
     - ok
@@ -660,7 +661,7 @@ def do_plan_mode(
 DISCUSS_CHITCHAT_PROMPT = (
     "你是友善、轻松的助手。用户在本软件的 Discuss 模式里，主要想与 LLM 自然闲聊。\n"
     "请用简短、口语化的中文回复，语气亲切，不要像系统通知。\n"
-    "可轻描淡写带一句：若要在 COMSOL 里正式建模型，可切换到 Plan（规划）模式描述需求。\n"
+    "可轻描淡写带一句：探讨、规划、执行三种模式可随时切换；若要正式建模型可切到规划或执行。\n"
     "禁止输出「讨论卡已更新」「原理 N 条」「指标 N 条」等机器统计句式。"
 )
 
@@ -669,7 +670,8 @@ DISCUSS_TOPIC_PROMPT = (
     "系统会在后台维护结构化讨论要点（用户看不到内部字段名）。\n"
     "下面「内部摘要」仅供你参考，请用自然对话回复：回应用户输入，信息不足时温和追问 1～2 个关键点。\n"
     "语气像在讨论方案，不要像打印状态报告。\n"
-    "禁止输出「讨论卡已更新」「原理 N 条」等模板句；若合适可提醒：需要进入下一阶段时可发送「进入规划」或切换到规划模式。\n\n"
+    "禁止输出「讨论卡已更新」「原理 N 条」等模板句；"
+    "若合适可提醒：可随时切换到规划或执行；补充需求会作废已确认的建模计划。\n\n"
     "【内部摘要】\n{brief}\n"
 )
 
@@ -801,7 +803,10 @@ def do_discuss(
             except Exception as e:
                 logger.warning("Discuss 闲聊 LLM 失败，使用兜底: %s", e)
                 log_action("discuss_chitchat_llm_failed", detail=str(e), level="WARNING")
-                reply = "你好！我在这儿。想聊什么都可以；若要开始整理 COMSOL 建模需求，可以切换到 Plan 模式。"
+                reply = (
+                    "你好！我在这儿。想聊什么都可以；"
+                    "探讨、规划、执行可随时切换，需要时直接开始整理建模需求即可。"
+                )
             card = handler._load_or_create_card()
             context_manager.add_conversation(
                 user_input=user_input,
@@ -827,8 +832,12 @@ def do_discuss(
             return True, reply, card.model_dump(mode="json")
 
         card = handler._load_or_create_card()
-        handler._update_card(card, text)
+        card.finalized = False
+        changed = handler._update_card(card, text)
         handler._save_card(card)
+        if changed:
+            context_manager.invalidate_confirmed_plan()
+            log_action("discuss_invalidated_confirmed_plan")
         brief = format_card_brief(card)
         log_action(
             "discussion_card_updated",
@@ -838,6 +847,7 @@ def do_discuss(
                 "known_inputs": len(card.known_inputs),
                 "unknowns": len(card.unknowns),
                 "risks": len(card.risks),
+                "plan_invalidated": changed,
             },
         )
         try:
@@ -853,8 +863,9 @@ def do_discuss(
             logger.warning("Discuss 技术向 LLM 失败，使用兜底: %s", e)
             log_action("discuss_topic_llm_failed", detail=str(e), level="WARNING")
             reply = (
-                "已记下你的描述。若准备生成可执行规划，可发送「进入规划」或切换到规划模式；"
+                "已记下你的描述。可随时切换到规划或执行；"
                 "也可继续补充几何、材料、边界与目标结果。"
+                + ("（已作废此前确认的建模计划。）" if changed else "")
             )
         context_manager.add_conversation(
             user_input=user_input,
@@ -895,6 +906,132 @@ def do_discuss(
             _update_memory_after_run(conversation_id, user_input, str(e), False)
         finish_log(False, str(e), {"exception_type": type(e).__name__})
         return False, str(e), None
+
+
+def do_chat(
+    user_input: str,
+    conversation_id: Optional[str] = None,
+    backend: Optional[str] = None,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    ollama_url: Optional[str] = None,
+    model: Optional[str] = None,
+    output: Optional[str] = None,
+    workspace_dir: Optional[str] = None,
+    skip_check: bool = False,
+    verbose: bool = False,
+    clarifying_answers: Optional[List[Dict[str, Any]]] = None,
+    event_bus: Optional[EventBus] = None,
+) -> Tuple[
+    bool,
+    str,
+    Optional[Dict[str, Any]],
+    bool,
+    Optional[List[Dict[str, Any]]],
+    bool,
+]:
+    """
+    统一对话流水线：探讨写入 → 规划（澄清则打断）→ 自动确认 → 执行。
+
+    Returns:
+    - ok
+    - reply_text
+    - plan_dict
+    - plan_confirmed
+    - clarifying_questions
+    - executed_run
+    """
+    _ensure_logging(verbose)
+    # workspace 由 bridge 侧 set_active_workspace_dir 注入；dependencies 包装不接受 workspace_dir。
+    context_manager = get_context_manager(conversation_id)
+    _log_id, log_action, finish_log = _make_dialog_logger(
+        context_manager,
+        command="chat",
+        user_input=user_input,
+        metadata={
+            "conversation_id": conversation_id or "default",
+            "backend": backend or "",
+            "model": model or "",
+            "clarifying_answers_count": len(clarifying_answers or []),
+            "workspace_dir": workspace_dir or "",
+        },
+    )
+    log_action("chat_pipeline_invoked")
+    try:
+        from agent.run.chat_pipeline import run_chat_pipeline
+
+        ok, reply, plan_dict, plan_confirmed, clarifying_questions, executed_run = (
+            run_chat_pipeline(
+                user_input=user_input,
+                context_manager=context_manager,
+                do_discuss_fn=do_discuss,
+                do_run_fn=do_run,
+                get_agent=get_agent,
+                conversation_id=conversation_id,
+                backend=backend,
+                api_key=api_key,
+                base_url=base_url,
+                ollama_url=ollama_url,
+                model=model,
+                output=output,
+                workspace_dir=workspace_dir,
+                skip_check=skip_check,
+                verbose=verbose,
+                clarifying_answers=clarifying_answers,
+                event_bus=event_bus,
+            )
+        )
+        context_manager.add_conversation(
+            user_input=user_input,
+            assistant_summary=reply,
+            plan=_summarize_plan_for_history(
+                plan_dict,
+                plan_confirmed=plan_confirmed,
+                clarifying_questions=clarifying_questions,
+            )
+            if plan_dict is not None
+            else {
+                "architecture": "chat",
+                "executed_run": executed_run,
+                "plan_confirmed": plan_confirmed,
+            },
+            success=ok,
+        )
+        if conversation_id:
+            _update_memory_after_run(conversation_id, user_input, reply, ok)
+        log_action(
+            "chat_pipeline_completed",
+            data={
+                "ok": ok,
+                "plan_confirmed": plan_confirmed,
+                "executed_run": executed_run,
+                "clarifying_questions": len(clarifying_questions or []),
+            },
+        )
+        finish_log(
+            ok,
+            reply,
+            {
+                "plan_confirmed": plan_confirmed,
+                "executed_run": executed_run,
+                "clarifying_questions": len(clarifying_questions or []),
+            },
+        )
+        return ok, reply, plan_dict, plan_confirmed, clarifying_questions, executed_run
+    except Exception as e:
+        logger.exception("do_chat 失败: %s", e)
+        log_action("chat_pipeline_failed", detail=str(e), level="ERROR")
+        context_manager.add_conversation(
+            user_input=user_input,
+            assistant_summary=str(e),
+            plan={"architecture": "chat", "status": "error"},
+            success=False,
+            error=str(e),
+        )
+        if conversation_id:
+            _update_memory_after_run(conversation_id, user_input, str(e), False)
+        finish_log(False, str(e), {"exception_type": type(e).__name__})
+        return False, str(e), None, False, None, False
 
 
 def do_case(

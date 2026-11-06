@@ -23,16 +23,16 @@ export function HelpDialog() {
           <span className="dialog-row-val">打开帮助面板</span>
         </div>
         <div className="dialog-row">
-          <span className="dialog-row-key">切换到探讨</span>
-          <span className="dialog-row-val">切换到 Discuss 模式，与 LLM 理清需求</span>
+          <span className="dialog-row-key">自动流水线</span>
+          <span className="dialog-row-val">一句话描述需求；Agent 自动探讨→规划→执行</span>
         </div>
         <div className="dialog-row">
-          <span className="dialog-row-key">切换到执行</span>
-          <span className="dialog-row-val">切换到执行模式（执行已确认计划）</span>
+          <span className="dialog-row-key">澄清打断</span>
+          <span className="dialog-row-val">仅在需要确认未知项/风险时弹出澄清问题</span>
         </div>
         <div className="dialog-row">
-          <span className="dialog-row-key">切换到规划</span>
-          <span className="dialog-row-val">切换到规划模式（基于讨论卡生成计划）</span>
+          <span className="dialog-row-key">改需求</span>
+          <span className="dialog-row-val">继续补充会作废已确认计划并重新流水线</span>
         </div>
         <div className="dialog-row">
           <span className="dialog-row-key">读取 .mph 案例</span>
@@ -43,8 +43,8 @@ export function HelpDialog() {
           <span className="dialog-row-val">根据 JSON 创建模型</span>
         </div>
         <div className="dialog-row">
-          <span className="dialog-row-key">LLM 后端</span>
-          <span className="dialog-row-val">选择 LLM 后端</span>
+          <span className="dialog-row-key">模型后端</span>
+          <span className="dialog-row-val">当前为 DeepSeek</span>
         </div>
         <div className="dialog-row">
           <span className="dialog-row-key">上下文</span>

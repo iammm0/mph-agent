@@ -1,32 +1,28 @@
 import { useAppState } from "../context/AppStateContext";
 import { getProviderLabel } from "../lib/apiConfig";
+import { AGENT_PHASE_LABELS } from "../lib/types";
 import { Icon } from "./Icon";
 
 export function Footer() {
   const { state } = useAppState();
 
-  const modeLabel =
-    state.mode === "discuss" ? "Discuss" : state.mode === "plan" ? "Plan" : "Run";
+  const phase = AGENT_PHASE_LABELS[state.mode];
   const backendLabel = getProviderLabel(state.backend);
 
   return (
     <div className="footer">
       <span className="footer-left">
-        多物理场建模智能体
+        mph-agent
         <span
           className="footer-workflow-hint"
-          title="推荐顺序：探讨 → 规划 → 执行。也可随时用底部模式条或 + 扩展功能切换，或直接建模。"
+          title="直接描述需求即可。Agent 会自动探讨、规划；仅在需要澄清时打断，然后执行建模。"
         >
-          探讨→规划→执行（可任选入口）
+          自动流水线（澄清时打断）
         </span>
       </span>
       <div className="footer-right">
-        <span className="footer-mode">
-          <Icon
-            name={state.mode === "discuss" ? "message-bubble" : state.mode === "plan" ? "task-square" : "play"}
-            size={13}
-          />{" "}
-          {modeLabel}
+        <span className="footer-mode" title={phase.title}>
+          <Icon name={phase.icon} size={13} /> {phase.label}
         </span>
         <span>{backendLabel}</span>
       </div>

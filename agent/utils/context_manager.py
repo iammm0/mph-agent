@@ -344,6 +344,24 @@ class ContextManager:
         except Exception as e:
             logger.warning("Failed to save plan_readable.md: %s", e)
 
+    def invalidate_confirmed_plan(self) -> bool:
+        """Clear plan_confirmed if set. Keeps plan draft; next Run will not reuse it.
+
+        Returns True when a previously confirmed plan was invalidated.
+        """
+        plan = self.load_plan()
+        if not plan or not bool(plan.get("plan_confirmed")):
+            return False
+        plan["plan_confirmed"] = False
+        self.save_plan(plan)
+        readable = self.load_plan_readable()
+        if readable and "plan_confirmed: True" in readable:
+            self.save_plan_readable(
+                readable.replace("plan_confirmed: True", "plan_confirmed: False")
+            )
+        logger.info("Confirmed plan invalidated (plan_confirmed cleared)")
+        return True
+
     # ---- Discussion persistence ----
 
     def load_discussion_card(self) -> Optional[Dict[str, Any]]:

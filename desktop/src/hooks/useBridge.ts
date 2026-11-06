@@ -36,7 +36,7 @@ export function useBridge() {
 
   const applyModeResponseSideEffects = useCallback(
     (cmd: string, res: BridgeResponse) => {
-      if (cmd === "plan") {
+      if (cmd === "plan" || cmd === "chat") {
         const questions = extractClarifyingQuestionsFromResponse(res);
         const unresolvedCount = extractUnresolvedClarificationCount(res);
         const needsClarification =
@@ -45,21 +45,15 @@ export function useBridge() {
           (questions.length > 0 && !Boolean(res.plan_confirmed));
 
         if (needsClarification && questions.length > 0) {
+          dispatch({ type: "SET_MODE", mode: "plan" });
           dispatch({ type: "SET_PLAN_QUESTIONS", questions });
           dispatch({ type: "SET_DIALOG", dialog: "planQuestions" });
         } else {
           dispatch({ type: "CLEAR_PLAN_QUESTIONS" });
+          if (cmd === "chat" && Boolean(res.plan_confirmed)) {
+            dispatch({ type: "SET_MODE", mode: "run" });
+          }
         }
-      }
-
-      if (cmd === "discuss") {
-        const card = res.discussion_card;
-        const finalized = Boolean(
-          card &&
-            typeof card === "object" &&
-            (card as { finalized?: unknown }).finalized === true
-        );
-        dispatch({ type: "SET_DISCUSSION_READY_FOR_PLAN", value: finalized });
       }
     },
     [dispatch]
@@ -113,6 +107,19 @@ export function useBridge() {
       const unlisten = await listen<RunEvent>("bridge-event", (event) => {
         const payload = event.payload;
         dispatch({ type: "APPEND_EVENT", conversationId: cid, event: payload });
+
+        if (payload.type === "task_phase") {
+          const phase = String(
+            (payload.data as Record<string, unknown> | undefined)?.phase ?? ""
+          ).toLowerCase();
+          if (phase === "discussion" || phase === "discuss") {
+            dispatch({ type: "SET_MODE", mode: "discuss" });
+          } else if (phase === "planning" || phase === "plan") {
+            dispatch({ type: "SET_MODE", mode: "plan" });
+          } else if (phase === "running" || phase === "run" || phase === "execute") {
+            dispatch({ type: "SET_MODE", mode: "run" });
+          }
+        }
 
         if (payload.type !== "plan_end") return;
 
@@ -218,18 +225,6 @@ export function useBridge() {
         case "output":
           dispatch({ type: "SET_DIALOG", dialog: "output" });
           return;
-        case "discuss":
-          dispatch({ type: "SET_MODE", mode: "discuss" });
-          addMessage("system", "已切换为探讨模式，可与 LLM 理清需求");
-          return;
-        case "plan":
-          dispatch({ type: "SET_MODE", mode: "plan" });
-          addMessage("system", "已切换为规划模式");
-          return;
-        case "run":
-          dispatch({ type: "SET_MODE", mode: "run" });
-          addMessage("system", "已切换为执行模式");
-          return;
         case "demo":
           addMessage("system", "已触发牛顿环仿真示例");
           await sendCommand("demo");
@@ -294,28 +289,16 @@ export function useBridge() {
           }
         }
 
-        if (state.mode === "discuss") {
-          await sendStreamCommand("discuss", {
-            input: line,
-            ...apiPayload,
-          });
-        } else if (state.mode === "plan") {
-          await sendStreamCommand("plan", { input: line, ...apiPayload });
-        } else {
-          await sendStreamCommand("run", {
-            input: line,
-            output: state.outputDefault ?? undefined,
-            workspace_dir: state.workspaceDir ?? undefined,
-            use_react: true,
-            no_context: false,
-            ...apiPayload,
-          });
-        }
+        await sendStreamCommand("chat", {
+          input: line,
+          output: state.outputDefault ?? undefined,
+          workspace_dir: state.workspaceDir ?? undefined,
+          ...apiPayload,
+        });
       })();
     },
     [
       cid,
-      state.mode,
       state.outputDefault,
       state.workspaceDir,
       state.backend,

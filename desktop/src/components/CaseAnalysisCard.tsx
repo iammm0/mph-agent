@@ -140,7 +140,6 @@ export function CaseAnalysisCard({
       caseData.context_block?.trim() ||
       "";
     if (!prompt) return;
-    dispatch({ type: "SET_MODE", mode: "plan" });
     dispatch({ type: "SET_EDITING_DRAFT", text: prompt });
   }, [
     caseData.context_block,

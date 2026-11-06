@@ -138,16 +138,20 @@ class DiscussionModeHandler:
         payload = card.model_dump(mode="json")
         self.context_manager.save_discussion_card(payload)
 
+    def _invalidate_plan_if_needed(self) -> None:
+        if hasattr(self.context_manager, "invalidate_confirmed_plan"):
+            self.context_manager.invalidate_confirmed_plan()
+
     def _try_early_returns(
         self, text: str, lowered: str, card: DiscussionCard
     ) -> Optional[Tuple[str, DiscussionCard]]:
         if any(k in lowered for k in REOPEN_KEYWORDS):
             card.finalized = False
-
-        if card.finalized and not any(k in lowered for k in REOPEN_KEYWORDS):
+            card.updated_at = datetime.now()
             self._save_card(card)
+            self._invalidate_plan_if_needed()
             return (
-                "讨论卡已 finalized。请切换到规划模式生成建模规划；若要继续讨论，请先发送“继续探讨”。",
+                "已重新打开探讨。可继续补充需求；改动讨论要点会作废已确认的建模计划。",
                 card,
             )
 
@@ -156,12 +160,23 @@ class DiscussionModeHandler:
             card.updated_at = datetime.now()
             self._save_card(card)
             return (
-                "探讨已确认结束，讨论卡已 finalized。现在可切换到规划模式进入建模规划。",
+                "探讨结论已标记完成。可随时切换到规划模式生成建模规划，"
+                "也可继续补充；补充内容会自动重新打开探讨并作废已确认计划。",
                 card,
             )
         return None
 
-    def _update_card(self, card: DiscussionCard, user_input: str) -> None:
+    def _update_card(self, card: DiscussionCard, user_input: str) -> bool:
+        """Incrementally update card. Returns True if structured content changed."""
+        before = (
+            list(card.physical_principles),
+            list(card.target_metrics),
+            list(card.known_inputs),
+            list(card.unknowns),
+            list(card.assumptions),
+            list(card.risks),
+            list(card.candidate_solutions),
+        )
         points = _split_points(user_input)
         for p in points:
             if _looks_risk(p):
@@ -192,6 +207,16 @@ class DiscussionModeHandler:
         card.risks = _dedupe_keep_order(card.risks)
         card.candidate_solutions = _dedupe_keep_order(card.candidate_solutions)
         card.updated_at = datetime.now()
+        after = (
+            list(card.physical_principles),
+            list(card.target_metrics),
+            list(card.known_inputs),
+            list(card.unknowns),
+            list(card.assumptions),
+            list(card.risks),
+            list(card.candidate_solutions),
+        )
+        return before != after
 
     def process(self, user_input: str) -> Tuple[str, Dict[str, object]]:
         """兼容旧逻辑与单元测试：非 LLM 路径仍返回「讨论卡已更新」模板。"""
@@ -203,20 +228,24 @@ class DiscussionModeHandler:
             msg, c = early
             return msg, c.model_dump(mode="json")
 
-        self._update_card(card, text)
+        # New technical content always reopens discussion (soft finalize).
+        card.finalized = False
+        changed = self._update_card(card, text)
         self._save_card(card)
+        if changed:
+            self._invalidate_plan_if_needed()
         summary = (
             "讨论卡已更新："
             f"原理 {len(card.physical_principles)} 条，指标 {len(card.target_metrics)} 条，"
             f"已知输入 {len(card.known_inputs)} 条，未知项 {len(card.unknowns)} 条。"
-            "如需结束讨论，请发送“结束探讨”或“进入规划”。"
+            "可随时切换到规划或执行；需要标记探讨完成时可发送“结束探讨”。"
         )
         return summary, card.model_dump(mode="json")
 
     def try_resolve_control_messages(
         self, user_input: str
     ) -> Optional[Tuple[str, Dict[str, object]]]:
-        """仅处理结束探讨 / 继续探讨 / finalized 守卫；若命中则返回整轮回复。"""
+        """仅处理结束探讨 / 继续探讨等控制语；若命中则返回整轮回复。"""
         text = (user_input or "").strip()
         card = self._load_or_create_card()
         lowered = text.lower()

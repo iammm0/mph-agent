@@ -168,7 +168,6 @@ export function CaseLibraryPage() {
 
   const handleQuickParse = useCallback(
     (item: CaseLibraryItem) => {
-      dispatch({ type: "SET_MODE", mode: "plan" });
       dispatch({ type: "SET_EDITING_DRAFT", text: buildParsePrompt(item) });
       dispatch({ type: "SET_VIEW", view: "session" });
     },

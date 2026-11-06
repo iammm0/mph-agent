@@ -129,23 +129,13 @@ export function PlanQuestionsDialog({ onClose }: PlanQuestionsDialogProps) {
     const payloadAnswers = buildPayloadAnswers();
     const apiPayload = getPayloadFromConfig(state.backend, loadApiConfig());
 
-    if (state.mode === "plan") {
-      void sendStreamCommand("plan", {
-        input,
-        clarifying_answers: payloadAnswers,
-        ...apiPayload,
-      });
-    } else {
-      void sendStreamCommand("run", {
-        input,
-        clarifying_answers: payloadAnswers,
-        output: state.outputDefault ?? undefined,
-        workspace_dir: state.workspaceDir ?? undefined,
-        use_react: true,
-        no_context: false,
-        ...apiPayload,
-      });
-    }
+    void sendStreamCommand("chat", {
+      input,
+      clarifying_answers: payloadAnswers,
+      output: state.outputDefault ?? undefined,
+      workspace_dir: state.workspaceDir ?? undefined,
+      ...apiPayload,
+    });
 
     dispatch({ type: "CLEAR_PLAN_QUESTIONS" });
     dispatch({ type: "SET_DIALOG", dialog: null });
@@ -158,7 +148,7 @@ export function PlanQuestionsDialog({ onClose }: PlanQuestionsDialogProps) {
     onClose();
   };
 
-  const continueLabel = state.mode === "plan" ? "确认答案并继续规划" : "确认答案并继续执行";
+  const continueLabel = "确认答案并继续";
   const helperText =
     questions.length > 0
       ? `已完成 ${answeredCount}/${questions.length} 个澄清项。回答完后点击右下角继续。`
@@ -167,7 +157,7 @@ export function PlanQuestionsDialog({ onClose }: PlanQuestionsDialogProps) {
   return (
     <div className="dialog plan-questions-dialog">
       <div className="dialog-header">
-        <h2>{state.mode === "plan" ? "继续前先澄清几个问题" : "执行前先澄清几个问题"}</h2>
+        <h2>继续前先澄清几个问题</h2>
       </div>
 
       <div className="dialog-body">

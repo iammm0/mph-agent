@@ -19,7 +19,7 @@ const QUICK_PROMPT_ITEMS = QUICK_PROMPT_GROUPS.flatMap((group: QuickPromptGroup)
 );
 
 export function MessageList() {
-  const { messages, dispatch } = useAppState();
+  const { messages } = useAppState();
   const { handleSubmit, triggerExtensionAction } = useBridge();
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -33,7 +33,7 @@ export function MessageList() {
         <div className="message-list-empty">
           <div className="quick-prompts">
             <p className="quick-prompts-title">快速案例</p>
-            <p className="quick-prompts-hint">点击即进入执行并开始建模</p>
+            <p className="quick-prompts-hint">点击即自动规划并开始建模</p>
             <div className="quick-prompts-grid">
               {QUICK_PROMPT_ITEMS.map((item) => (
                 <button
@@ -45,7 +45,6 @@ export function MessageList() {
                       void triggerExtensionAction(item.extensionName);
                       return;
                     }
-                    dispatch({ type: "SET_MODE", mode: "run" });
                     handleSubmit(item.text);
                   }}
                   title={item.tip}

@@ -14,22 +14,18 @@ import {
   API_CONFIG_UPDATED_EVENT,
   loadApiConfig,
 } from "../lib/apiConfig";
-import {
-  PROMPT_PLUS_MENU_COMMANDS,
-  PROMPT_MODE_ITEMS,
-} from "../lib/types";
+import { AGENT_PHASE_LABELS, PROMPT_PLUS_MENU_COMMANDS } from "../lib/types";
 import {
   estimateContextUsage,
   formatCompactTokenCount,
 } from "../lib/contextUsage";
-import type { PromptExtensionItem, AgentMode } from "../lib/types";
+import type { PromptExtensionItem } from "../lib/types";
 import { Icon } from "./Icon";
 
 export function Prompt() {
   const { state, dispatch } = useAppState();
   const { handleSubmit, abortRun, triggerExtensionAction } = useBridge();
   const [value, setValue] = useState("");
-  const [modeToast, setModeToast] = useState("");
   const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [apiConfig, setApiConfig] = useState(() => loadApiConfig());
   const [promptContextText, setPromptContextText] = useState("");
@@ -56,12 +52,6 @@ export function Prompt() {
     document.addEventListener("mousedown", onDocMouseDown);
     return () => document.removeEventListener("mousedown", onDocMouseDown);
   }, [showPlusMenu]);
-
-  useEffect(() => {
-    if (!modeToast) return;
-    const timer = window.setTimeout(() => setModeToast(""), 1800);
-    return () => window.clearTimeout(timer);
-  }, [modeToast]);
 
   const refreshApiConfig = useCallback(() => {
     setApiConfig(loadApiConfig());
@@ -136,21 +126,6 @@ export function Prompt() {
     handleSubmit(text);
     setValue("");
   }, [value, state.busyConversationId, handleSubmit]);
-
-  const applyMode = useCallback(
-    (mode: AgentMode) => {
-      if (state.mode === mode) return;
-      dispatch({ type: "SET_MODE", mode });
-      if (mode === "run") {
-        setModeToast("已切换为执行模式（Run）");
-      } else if (mode === "discuss") {
-        setModeToast("已切换为探讨模式（Discuss），可与 LLM 闲聊");
-      } else {
-        setModeToast("已切换为规划模式（Plan）");
-      }
-    },
-    [state.mode, dispatch]
-  );
 
   const onPlusSelect = useCallback(
     async (cmd: PromptExtensionItem) => {
@@ -227,22 +202,10 @@ export function Prompt() {
     `安全剩余：${formatCompactTokenCount(contextUsage.safeRemainingTokens)}`,
   ].join("\n");
 
+  const phaseMeta = AGENT_PHASE_LABELS[state.mode];
+
   return (
     <div className="prompt-area">
-      {state.discussionReadyForPlan && state.mode === "discuss" && (
-        <div className="prompt-plan-nudge" role="status">
-          <span className="prompt-plan-nudge__text">
-            探讨结论已就绪，可进入规划模式编写建模需求；也可点下方「规划」或 + 菜单中的扩展功能。
-          </span>
-          <button
-            type="button"
-            className="prompt-plan-nudge__btn"
-            onClick={() => dispatch({ type: "SET_MODE", mode: "plan" })}
-          >
-            进入规划
-          </button>
-        </div>
-      )}
       <div
         className={`prompt-wrapper${busy ? " prompt-wrapper--busy" : ""}`}
         style={{ position: "relative" }}
@@ -284,7 +247,7 @@ export function Prompt() {
             ref={textareaRef}
             className="prompt-input"
             rows={1}
-            placeholder="输入建模需求…（扩展功能请点击 +）"
+            placeholder="描述建模需求，Agent 会自动规划并执行…"
             value={value}
             disabled={busy}
             onChange={(e) => {
@@ -315,20 +278,13 @@ export function Prompt() {
         )}
       </div>
       <div className={`composer-status ${contextUsage.status}`}>
-        {modeToast ? <span className="composer-status__toast">{modeToast}</span> : null}
-        <div className="composer-status__modes" role="group" aria-label="工作模式">
-          {PROMPT_MODE_ITEMS.map((item) => (
-            <button
-              key={item.mode}
-              type="button"
-              className={`prompt-mode-btn ${item.mode} ${state.mode === item.mode ? "active" : ""}`}
-              title={item.title}
-              onClick={() => applyMode(item.mode)}
-              disabled={busy}
-            >
-              {item.label}
-            </button>
-          ))}
+        <div className="composer-status__modes" role="status" aria-label="当前流水线阶段">
+          <span
+            className={`prompt-mode-btn ${state.mode} active`}
+            title={phaseMeta.title}
+          >
+            {phaseMeta.label}
+          </span>
         </div>
         <span className="composer-status__meta" title={contextMeterTitle}>
           {contextUsage.modelLabel} · ctx {contextUsage.percent}%

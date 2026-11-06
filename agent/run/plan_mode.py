@@ -1,4 +1,4 @@
-"""Plan stage handler with discuss-gated workflow."""
+"""Plan stage handler with free discuss/plan/run interleaving."""
 
 from __future__ import annotations
 
@@ -24,6 +24,31 @@ _CONFIRM_PLAN_KEYWORDS = (
     "执行计划",
     "plan confirmed",
 )
+
+_REGENERATE_PLAN_KEYWORDS = (
+    "重新规划",
+    "重新生成计划",
+    "重建计划",
+    "改写计划",
+    "改写规划",
+    "重做规划",
+    "regenerate plan",
+    "rebuild plan",
+)
+
+
+def _card_has_content(card: DiscussionCard) -> bool:
+    return any(
+        [
+            card.physical_principles,
+            card.target_metrics,
+            card.known_inputs,
+            card.unknowns,
+            card.assumptions,
+            card.risks,
+            card.candidate_solutions,
+        ]
+    )
 
 
 def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
@@ -129,9 +154,10 @@ class PlanModeHandler:
     Plan stage entry.
 
     Rules:
-    1) discussion card must exist and be finalized;
+    1) discussion card is optional (empty card + user_input is enough);
     2) unresolved clarifications block plan confirmation;
-    3) confirmed plan is persisted to plan.json + plan_readable.md.
+    3) confirmed plan is persisted to plan.json + plan_readable.md;
+    4) rewriting / regenerating clears plan_confirmed (invalidate-and-redo).
     """
 
     def __init__(
@@ -164,17 +190,20 @@ class PlanModeHandler:
         )
 
     def _build_plan_from_discussion(self, card: DiscussionCard, user_input: str) -> Dict[str, Any]:
-        discuss_text = "\n".join(
-            [
-                "讨论结论：",
-                f"物理原理: {', '.join(card.physical_principles) or '未提供'}",
-                f"目标指标: {', '.join(card.target_metrics) or '未提供'}",
-                f"已知输入: {', '.join(card.known_inputs) or '未提供'}",
-                f"假设: {', '.join(card.assumptions) or '未提供'}",
-                f"候选方案: {', '.join(card.candidate_solutions) or '未提供'}",
-                f"规划补充: {user_input or '无'}",
-            ]
-        )
+        if _card_has_content(card):
+            discuss_text = "\n".join(
+                [
+                    "讨论结论：",
+                    f"物理原理: {', '.join(card.physical_principles) or '未提供'}",
+                    f"目标指标: {', '.join(card.target_metrics) or '未提供'}",
+                    f"已知输入: {', '.join(card.known_inputs) or '未提供'}",
+                    f"假设: {', '.join(card.assumptions) or '未提供'}",
+                    f"候选方案: {', '.join(card.candidate_solutions) or '未提供'}",
+                    f"规划补充: {user_input or '无'}",
+                ]
+            )
+        else:
+            discuss_text = (user_input or "").strip() or "请根据会话上下文生成建模规划。"
 
         orchestrator = self._get_orchestrator()
         memory_context = (
@@ -316,6 +345,8 @@ class PlanModeHandler:
         self,
         user_input: str,
         clarifying_answers: Optional[List[Dict[str, Any]]] = None,
+        *,
+        auto_confirm: bool = False,
     ) -> Tuple[str, Optional[Dict[str, Any]], bool, Optional[List[Dict[str, Any]]]]:
         """
         Returns:
@@ -323,33 +354,44 @@ class PlanModeHandler:
         - plan_dict
         - plan_confirmed
         - clarifying_questions (when still unresolved)
+
+        auto_confirm: when True and clarifications are resolved, lock plan without
+        requiring user keywords like「确认计划」(used by chat pipeline).
         """
 
         user_input = (user_input or "").strip()
         discussion_raw = self.context_manager.load_discussion_card()
-        if not discussion_raw:
-            return (
-                "未找到讨论卡。请先切换到探讨模式，并在完成后发送“结束探讨”。",
-                None,
-                False,
-                None,
-            )
-        try:
-            card = DiscussionCard.model_validate(discussion_raw)
-        except Exception:
-            return ("讨论卡损坏，请重新在探讨模式中生成讨论结论。", None, False, None)
-        if not card.finalized:
-            return (
-                "讨论卡尚未 finalized。请先在探讨模式中明确发送“结束探讨”或“进入规划”。",
-                None,
-                False,
-                None,
-            )
+        if discussion_raw:
+            try:
+                card = DiscussionCard.model_validate(discussion_raw)
+            except Exception:
+                logger.warning("discussion card corrupt; falling back to empty card")
+                card = DiscussionCard()
+        else:
+            card = DiscussionCard()
 
         current = self.context_manager.load_plan()
-        plan_dict = current or self._build_plan_from_discussion(card, user_input)
+        want_regen = _contains_any(user_input, _REGENERATE_PLAN_KEYWORDS)
+        was_confirmed = bool(current and current.get("plan_confirmed"))
+        # Rewrite when: no draft yet, explicit regenerate, or confirmed plan + new non-confirm input.
+        substantive_rewrite = (
+            was_confirmed
+            and bool(user_input)
+            and not _contains_any(user_input, _CONFIRM_PLAN_KEYWORDS)
+            and not clarifying_answers
+        )
+        if current is None or want_regen or substantive_rewrite:
+            if was_confirmed and hasattr(self.context_manager, "invalidate_confirmed_plan"):
+                self.context_manager.invalidate_confirmed_plan()
+            plan_dict = self._build_plan_from_discussion(card, user_input)
+        else:
+            plan_dict = current
 
         if clarifying_answers:
+            if was_confirmed and hasattr(self.context_manager, "invalidate_confirmed_plan"):
+                # Answering clarifications after confirm means re-open; re-confirm when closed.
+                self.context_manager.invalidate_confirmed_plan()
+                plan_dict["plan_confirmed"] = False
             plan_dict = self._apply_clarifying_answers(plan_dict, clarifying_answers)
 
         unresolved = list(plan_dict.get("unresolved_clarifications") or [])
@@ -358,7 +400,7 @@ class PlanModeHandler:
             self.context_manager.save_plan_readable(self._build_readable_plan(plan_dict, card))
             questions = plan_dict.get("clarifying_questions") or []
             return (
-                "规划草案已生成。存在未澄清项，请先回答澄清问题后再确认计划。",
+                "规划草案已生成。存在未澄清项，请先回答澄清问题。",
                 plan_dict,
                 False,
                 questions,
@@ -379,7 +421,11 @@ class PlanModeHandler:
                 questions,
             )
 
-        if _contains_any(user_input, _CONFIRM_PLAN_KEYWORDS) or clarifying_answers:
+        if (
+            auto_confirm
+            or _contains_any(user_input, _CONFIRM_PLAN_KEYWORDS)
+            or clarifying_answers
+        ):
             plan_dict["plan_confirmed"] = True
 
         self.context_manager.save_plan(plan_dict)
@@ -388,13 +434,13 @@ class PlanModeHandler:
         confirmed = bool(plan_dict.get("plan_confirmed"))
         if confirmed:
             return (
-                "建模规划已确认，已写入 plan.json 与 plan_readable.md。现在可切换到执行模式开始运行。",
+                "建模规划已确认，已写入 plan.json 与 plan_readable.md。",
                 plan_dict,
                 True,
                 None,
             )
         return (
-            "规划草案已更新。所有澄清项已完成，发送“确认计划”即可锁定执行计划。",
+            "规划草案已更新。所有澄清项已完成，可继续执行建模。",
             plan_dict,
             False,
             None,
