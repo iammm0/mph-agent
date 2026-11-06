@@ -447,15 +447,26 @@ export function SettingsDialog({
             </p>
           )}
         </div>
-        {!pageMode && onClose && (
+        {pageMode ? (
           <button
             type="button"
-            className="settings-dialog-close"
-            onClick={onClose}
-            aria-label="关闭"
+            className="settings-back"
+            onClick={() => dispatch({ type: "SET_VIEW", view: "session" })}
           >
-            <Icon name="close-circle" size={16} />
+            <Icon name="arrow-left-01" size={15} />
+            返回对话
           </button>
+        ) : (
+          onClose && (
+            <button
+              type="button"
+              className="settings-dialog-close"
+              onClick={onClose}
+              aria-label="关闭"
+            >
+              <Icon name="close-circle" size={16} />
+            </button>
+          )
         )}
       </header>
       <div className="settings-dialog-body">
@@ -732,7 +743,10 @@ export function SettingsDialog({
               </p>
 
               <div className="settings-field">
-                <label>建模工作目录（MODEL_OUTPUT_DIR）</label>
+                <label>工作空间</label>
+                <p className="settings-hint">
+                  对话记录、计划、操作过程和模型文件都放在这个目录里，每个对话单独一个文件夹。
+                </p>
                 <div className="settings-path-row">
                   <input
                     type="text"

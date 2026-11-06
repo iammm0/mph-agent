@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -15,6 +16,30 @@ from agent.utils.config import get_install_dir
 from agent.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+_active_workspace_dir: ContextVar[Optional[str]] = ContextVar(
+    "mph_active_workspace_dir",
+    default=None,
+)
+
+
+def set_active_workspace_dir(path: Optional[str]) -> None:
+    """当前请求的工作空间。对话产物和过程文件都落在这个目录下。"""
+    text = (path or "").strip()
+    _active_workspace_dir.set(text or None)
+
+
+def conversation_storage_dir(
+    conversation_id: Optional[str] = None,
+    workspace_dir: Optional[str] = None,
+) -> Path:
+    """有工作空间时，会话目录是 `<workspace>/<conversation_id>`。"""
+    raw = (conversation_id or "default").strip() or "default"
+    name = re.sub(r"[^A-Za-z0-9._-]", "_", raw) or "default"
+    selected = workspace_dir if workspace_dir is not None else _active_workspace_dir.get()
+    if selected and str(selected).strip():
+        return Path(selected).expanduser().resolve() / name
+    return get_install_dir() / ".context" / name
 
 
 @dataclass
@@ -1010,12 +1035,23 @@ def get_all_models_from_context(limit: int = 50) -> List[Dict[str, Any]]:
 _context_manager: Optional[ContextManager] = None
 
 
-def get_context_manager(conversation_id: Optional[str] = None) -> ContextManager:
-    """Get default manager or conversation-scoped manager."""
+def get_context_manager(
+    conversation_id: Optional[str] = None,
+    workspace_dir: Optional[str] = None,
+) -> ContextManager:
+    """Get default manager or conversation-scoped manager.
+
+    workspace_dir 非空时，history、plan、operations 和对话日志写到该工作空间内。
+    """
 
     global _context_manager
-    if conversation_id:
-        return ContextManager(conversation_id=conversation_id)
+    if workspace_dir is not None:
+        set_active_workspace_dir(workspace_dir)
+    selected = workspace_dir if workspace_dir is not None else _active_workspace_dir.get()
+    if conversation_id or selected:
+        return ContextManager(
+            context_dir=conversation_storage_dir(conversation_id, selected)
+        )
     if _context_manager is None:
         _context_manager = ContextManager()
     return _context_manager

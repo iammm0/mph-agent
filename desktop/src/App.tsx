@@ -21,10 +21,6 @@ interface BridgeInitStatus {
   initializing?: boolean;
 }
 
-function renderMainView(view: string) {
-  if (view === "settings") return <SettingsDialog pageMode />;
-  return <Session />;
-}
 
 export default function App() {
   const { state, dispatch } = useAppState();
@@ -111,8 +107,18 @@ export default function App() {
         </div>
       )}
       <div className="app-body">
-        <Sidebar />
-        <div className="app-main">{renderMainView(state.view)}</div>
+        {state.view === "session" ? (
+          <>
+            <Sidebar />
+            <div className="app-main">
+              <Session />
+            </div>
+          </>
+        ) : (
+          <div className="app-main">
+            <SettingsDialog pageMode />
+          </div>
+        )}
       </div>
       {dialogContent && (
         <DialogOverlay onClose={closeDialog} dialogType={state.activeDialog}>

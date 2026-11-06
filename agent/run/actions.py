@@ -287,7 +287,7 @@ def do_run(
     _ensure_logging(verbose)
     from agent.utils.env_check import validate_environment
 
-    context_manager = get_context_manager(conversation_id)
+    context_manager = get_context_manager(conversation_id, workspace_dir=workspace_dir)
     _log_id, log_action, finish_log = _make_dialog_logger(
         context_manager,
         command="run",
@@ -348,7 +348,9 @@ def do_run(
 
     try:
         if use_react:
-            if workspace_dir:
+            if workspace_dir and conversation_id:
+                output_dir = context_manager.context_dir
+            elif workspace_dir:
                 output_dir = Path(workspace_dir).expanduser().resolve()
                 output_dir.mkdir(parents=True, exist_ok=True)
             else:

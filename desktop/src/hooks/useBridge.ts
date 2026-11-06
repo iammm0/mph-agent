@@ -72,7 +72,11 @@ export function useBridge() {
       try {
         const res = await invoke<BridgeResponse>("bridge_send", {
           cmd,
-          payload: { ...payload, conversation_id: cid },
+          payload: {
+            ...payload,
+            conversation_id: cid,
+            workspace_dir: state.workspaceDir ?? undefined,
+          },
         });
         applyModeResponseSideEffects(cmd, res);
         addMessage("assistant", res.message, {
@@ -90,7 +94,7 @@ export function useBridge() {
         dispatch({ type: "SET_BUSY_CONVERSATION", conversationId: null });
       }
     },
-    [cid, dispatch, addMessage, applyModeResponseSideEffects]
+    [cid, state.workspaceDir, dispatch, addMessage, applyModeResponseSideEffects]
   );
 
   const sendStreamCommand = useCallback(
@@ -134,7 +138,12 @@ export function useBridge() {
       try {
         const res = await invoke<BridgeResponse>("bridge_send_stream", {
           cmd,
-          payload: { ...payload, conversation_id: cid, stream: true },
+          payload: {
+            ...payload,
+            conversation_id: cid,
+            stream: true,
+            workspace_dir: state.workspaceDir ?? undefined,
+          },
         });
         applyModeResponseSideEffects(cmd, res);
         dispatch({
@@ -159,7 +168,7 @@ export function useBridge() {
         dispatch({ type: "SET_BUSY_CONVERSATION", conversationId: null });
       }
     },
-    [cid, dispatch, applyModeResponseSideEffects]
+    [cid, state.workspaceDir, dispatch, applyModeResponseSideEffects]
   );
 
   const abortRun = useCallback(async () => {

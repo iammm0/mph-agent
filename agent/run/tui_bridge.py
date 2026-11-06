@@ -142,6 +142,10 @@ def _handle(req: dict[str, Any]) -> None:
         _reply(False, "缺少 cmd")
         return
 
+    from agent.utils.context_manager import set_active_workspace_dir
+
+    set_active_workspace_dir(req.get("workspace_dir") or None)
+
     try:
         if cmd == "run":
             event_bus = EventBus()
