@@ -4938,6 +4938,12 @@ body {
     color: var(--text);
     border-bottom: 1px solid var(--border);
 }
+.dialog-hint {
+    margin: 0 0 12px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-muted);
+}
 .dialog-body {
     padding: 12px 20px 16px;
 }
@@ -5609,78 +5615,25 @@ body {
     flex-wrap: wrap;
     gap: 6px;
 }
-.settings-provider-groups {
+.settings-model-form {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    margin: 14px 0 18px;
+    gap: 14px;
+    max-width: 520px;
 }
-.settings-provider-section {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+.settings-model-form .settings-field {
+    margin: 0;
 }
-.settings-provider-section-title {
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    text-transform: none;
-    color: var(--text-muted);
-}
-.settings-provider-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 10px;
-}
-.settings-provider-card {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-    min-height: 112px;
-    padding: 12px 14px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background:
-        linear-gradient(
-            180deg,
-            color-mix(in srgb, var(--bg) 88%, transparent) 0%,
-            color-mix(in srgb, var(--bg-panel) 92%, transparent) 100%
-        );
-    color: var(--text);
-    text-align: left;
-    cursor: pointer;
-    transition:
-        border-color 0.15s,
-        transform 0.15s,
-        box-shadow 0.15s,
-        background 0.15s;
-}
-.settings-provider-card:hover {
-    transform: translateY(-1px);
-    border-color: color-mix(in srgb, var(--accent) 56%, var(--border));
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
-}
-.settings-provider-card.active {
-    border-color: var(--accent);
-    background:
-        linear-gradient(
-            180deg,
-            color-mix(in srgb, var(--accent) 16%, var(--bg)) 0%,
-            color-mix(in srgb, var(--accent) 6%, var(--bg-panel)) 100%
-        );
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
-}
-.settings-provider-card-head {
+.settings-model-form .settings-api-input,
+.settings-model-form select.settings-api-input {
     width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
 }
-.settings-provider-card-name {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
+.settings-model-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
 }
 .settings-pane-stack {
     display: flex;
@@ -5694,63 +5647,6 @@ body {
     font-size: 12px;
     line-height: 1.45;
     color: var(--text-muted);
-}
-.settings-provider-card-runtime {
-    display: inline-flex;
-    align-items: center;
-    width: fit-content;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    color: var(--accent);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    text-transform: none;
-}
-.settings-provider-card-desc {
-    font-size: 12px;
-    line-height: 1.55;
-    color: var(--text-muted);
-}
-.settings-provider-detail {
-    margin-top: 18px;
-    padding: 16px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background:
-        linear-gradient(
-            180deg,
-            color-mix(in srgb, var(--bg-panel) 96%, transparent) 0%,
-            color-mix(in srgb, var(--bg) 94%, transparent) 100%
-        );
-}
-.settings-provider-detail-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 10px;
-}
-.settings-provider-detail-head .settings-pane-title {
-    margin-bottom: 8px;
-}
-.settings-provider-detail-runtime {
-    flex: 0 1 320px;
-    margin: 0;
-    padding: 8px 12px;
-    border-radius: 10px;
-    border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
-    background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
-    color: var(--text-muted);
-    font-size: 12px;
-    font-weight: 400;
-    line-height: 1.5;
-    text-align: left;
-}
-.settings-provider-selected {
-    color: var(--text);
-    font-weight: 500;
 }
 .settings-block {
     margin-top: 16px;

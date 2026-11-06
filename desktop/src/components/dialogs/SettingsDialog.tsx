@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Icon } from "../Icon";
@@ -6,16 +6,12 @@ import { useTheme, ACCENT_PRESETS } from "../../context/ThemeContext";
 import { useAppState } from "../../context/AppStateContext";
 import {
   apiConfigToEnv,
-  getProviderCatalog,
   getProviderConfig,
-  getProviderLabel,
   getProviderMeta,
   loadApiConfig,
-  resolveRuntimeBackend,
   saveApiConfig,
   type ApiConfig,
   type LLMBackendId,
-  type ProviderCatalogEntry,
 } from "../../lib/apiConfig";
 import type { BridgeResponse, MyComsolModel, SettingsSection } from "../../lib/types";
 import { CaseLibraryPage } from "../CaseLibraryPage";
@@ -28,33 +24,13 @@ import {
 
 const TABS: { id: SettingsSection; label: string; icon: string; group: "config" | "library" }[] = [
   { id: "theme", label: "主题", icon: "colorfilter", group: "config" },
-  { id: "llm", label: "LLM 配置", icon: "cpu", group: "config" },
-  { id: "comsol", label: "COMSOL 配置", icon: "3dcube", group: "config" },
-  { id: "models", label: "模型管理", icon: "folder-2", group: "config" },
+  { id: "llm", label: "模型配置", icon: "cpu", group: "config" },
+  { id: "comsol", label: "COMSOL", icon: "3dcube", group: "config" },
+  { id: "models", label: "仿真产物", icon: "folder-2", group: "config" },
   { id: "case-library", label: "案例库", icon: "book", group: "library" },
 ];
 
-const PROVIDER_GROUP_LABELS: Record<ProviderCatalogEntry["group"], string> = {
-  "china-direct": "国内直连",
-  "overseas-relay": "海外中转兼容",
-  "custom-gateway": "自定义 / 企业网关",
-  local: "本地部署",
-};
-
-const PROVIDER_GROUP_ORDER: ProviderCatalogEntry["group"][] = [
-  "china-direct",
-  "overseas-relay",
-  "custom-gateway",
-  "local",
-];
-
-/** 卡片角标：短中文，避免英文 runtime 标签 */
-function providerConnectionHint(providerId: LLMBackendId): string {
-  const rt = resolveRuntimeBackend(providerId);
-  if (rt === "ollama") return "本机";
-  if (rt === "deepseek" || rt === "kimi") return "直连";
-  return "兼容";
-}
+const ACTIVE_PROVIDER_ID: LLMBackendId = "deepseek";
 
 function modelsDirOf(workspaceDir: string | null): string {
   if (!workspaceDir) return "";
@@ -91,18 +67,12 @@ export function SettingsDialog({
   const { themeMode, accentColor, setThemeMode, setAccentColor } = useTheme();
   const { state, dispatch } = useAppState();
 
-  const providerCatalog = useMemo(() => getProviderCatalog(), []);
-
   const activeTab = state.settingsTab;
   const setActiveTab = (tab: SettingsSection) =>
     dispatch({ type: "SET_VIEW", view: "settings", settingsTab: tab });
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => loadApiConfig());
   const [llmStatus, setLlmStatus] = useState("");
   const [comsolStatus, setComsolStatus] = useState("");
-  const [ollamaTestResult, setOllamaTestResult] = useState<{
-    ok: boolean;
-    msg: string;
-  } | null>(null);
   const [modelsList, setModelsList] = useState<MyComsolModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [caseRecords, setCaseRecords] = useState<CaseLibraryRecord[]>(() =>
@@ -110,36 +80,16 @@ export function SettingsDialog({
   );
 
   useEffect(() => {
-    setApiConfig(loadApiConfig());
-  }, []);
-
-  const selectedProviderId =
-    apiConfig.preferred_backend ?? providerCatalog[0]?.id ?? "deepseek";
-  const selectedProviderMeta = getProviderMeta(selectedProviderId);
-  const selectedProviderConfig = getProviderConfig(apiConfig, selectedProviderId);
-  const selectedRuntimeHint = (() => {
-    const rt = resolveRuntimeBackend(selectedProviderId);
-    if (rt === "ollama") return "通过本地或局域网 Ollama 调用，无需 API Key。";
-    if (rt === "deepseek") return "请求发往 DeepSeek 官方接口（Python 内置映射）。";
-    if (rt === "kimi") return "请求发往 Moonshot 官方接口（Python 内置映射）。";
-    return "按 OpenAI 兼容协议请求你填写的 Base URL，由 Python 映射为 openai-compatible 运行时。";
-  })();
-
-  const providersByGroup = useMemo(() => {
-    const groups: Record<
-      ProviderCatalogEntry["group"],
-      ProviderCatalogEntry[]
-    > = {
-      "china-direct": [],
-      "overseas-relay": [],
-      "custom-gateway": [],
-      local: [],
-    };
-    for (const provider of providerCatalog) {
-      groups[provider.group].push(provider);
+    const loaded = loadApiConfig();
+    setApiConfig(loaded);
+    if (state.backend !== ACTIVE_PROVIDER_ID) {
+      dispatch({ type: "SET_BACKEND", backend: ACTIVE_PROVIDER_ID });
     }
-    return groups;
-  }, [providerCatalog]);
+  }, [dispatch, state.backend]);
+
+  const selectedProviderId = ACTIVE_PROVIDER_ID;
+  const selectedProviderMeta = getProviderMeta(ACTIVE_PROVIDER_ID);
+  const selectedProviderConfig = getProviderConfig(apiConfig, selectedProviderId);
 
   const openNativePath = useCallback((path: string) => {
     invoke("open_path", { path }).catch(() => {
@@ -185,14 +135,10 @@ export function SettingsDialog({
           cmd: "config_save",
           payload: { config: env },
         });
-        if (res.ok && section === "llm" && reloaded.preferred_backend) {
-          const p = getProviderConfig(reloaded, reloaded.preferred_backend);
-          const label = getProviderLabel(reloaded.preferred_backend);
-          setStatus(
-            `已写入本页并同步后端。当前默认：${label}，模型「${p.model || "（未填）"}」。API Key 仍以密文框显示。`
-          );
+        if (res.ok) {
+          setStatus(section === "llm" ? "已保存" : `已保存：${res.message}`);
         } else {
-          setStatus(res.ok ? `已保存：${res.message}` : res.message);
+          setStatus(res.message);
         }
       } catch (error) {
         setStatus(`同步失败：${String(error)}`);
@@ -203,19 +149,6 @@ export function SettingsDialog({
     [state.workspaceDir]
   );
 
-  const setPreferredBackend = useCallback(
-    (value: LLMBackendId) => {
-      setApiConfig((current) => {
-        const next = { ...current, preferred_backend: value };
-        saveApiConfig(next);
-        return next;
-      });
-      dispatch({ type: "SET_BACKEND", backend: value });
-      setOllamaTestResult(null);
-    },
-    [dispatch]
-  );
-
   const updateProviderField = useCallback(
     (
       providerId: LLMBackendId,
@@ -224,6 +157,7 @@ export function SettingsDialog({
     ) => {
       setApiConfig((current) => ({
         ...current,
+        preferred_backend: ACTIVE_PROVIDER_ID,
         providers: {
           ...current.providers,
           [providerId]: {
@@ -232,26 +166,20 @@ export function SettingsDialog({
           },
         },
       }));
-      if (providerId === "ollama") {
-        setOllamaTestResult(null);
-      }
     },
     []
   );
 
   const saveConfig = useCallback(() => {
-    const nextConfig = apiConfig.preferred_backend
-      ? apiConfig
-      : { ...apiConfig, preferred_backend: selectedProviderId };
-
-    if (!apiConfig.preferred_backend) {
-      saveApiConfig(nextConfig);
-      setApiConfig(nextConfig);
-      dispatch({ type: "SET_BACKEND", backend: selectedProviderId });
-    }
-
+    const nextConfig = {
+      ...apiConfig,
+      preferred_backend: ACTIVE_PROVIDER_ID,
+    };
+    saveApiConfig(nextConfig);
+    setApiConfig(nextConfig);
+    dispatch({ type: "SET_BACKEND", backend: ACTIVE_PROVIDER_ID });
     void saveAndSync(nextConfig, "llm");
-  }, [apiConfig, dispatch, saveAndSync, selectedProviderId]);
+  }, [apiConfig, dispatch, saveAndSync]);
 
   const pickWorkspaceDir = useCallback(async () => {
     const cid = state.currentConversationId;
@@ -287,20 +215,6 @@ export function SettingsDialog({
     },
     []
   );
-
-  const testOllama = useCallback(async () => {
-    const url = getProviderConfig(apiConfig, "ollama").base_url.trim();
-    setOllamaTestResult(null);
-    try {
-      const res = await invoke<{ ok: boolean; message: string }>("bridge_send", {
-        cmd: "ollama_ping",
-        payload: { ollama_url: url },
-      });
-      setOllamaTestResult({ ok: res.ok, msg: res.message });
-    } catch (error) {
-      setOllamaTestResult({ ok: false, msg: String(error) });
-    }
-  }, [apiConfig]);
 
   const loadModelsList = useCallback(async () => {
     setModelsLoading(true);
@@ -469,154 +383,44 @@ export function SettingsDialog({
           )}
 
           {activeTab === "llm" && (
-            <div className="settings-card">
-              <div className="settings-provider-groups">
-                {PROVIDER_GROUP_ORDER.map((group) => {
-                  const providers = providersByGroup[group];
-                  if (providers.length === 0) return null;
-                  return (
-                    <section key={group} className="settings-provider-section">
-                      <div className="settings-provider-section-title">
-                        {PROVIDER_GROUP_LABELS[group]}
-                      </div>
-                      <div className="settings-provider-grid">
-                        {providers.map((provider) => {
-                          const active = apiConfig.preferred_backend === provider.id;
-                          return (
-                            <button
-                              key={provider.id}
-                              type="button"
-                              className={`settings-provider-card ${
-                                active ? "active" : ""
-                              }`}
-                              onClick={() => setPreferredBackend(provider.id)}
-                            >
-                              <span className="settings-provider-card-head">
-                                <span className="settings-provider-card-name">
-                                  {provider.label}
-                                </span>
-                                <span className="settings-provider-card-runtime">
-                                  {providerConnectionHint(provider.id)}
-                                </span>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  );
-                })}
+            <div className="settings-card settings-model-form">
+              <div className="settings-field">
+                <label htmlFor="settings-model-name">模型</label>
+                <input
+                  id="settings-model-name"
+                  type="text"
+                  className="dialog-input settings-api-input"
+                  placeholder={selectedProviderMeta.defaultModel}
+                  value={selectedProviderConfig.model}
+                  onChange={(event) =>
+                    updateProviderField(selectedProviderId, "model", event.target.value)
+                  }
+                />
               </div>
 
-              <div className="settings-provider-detail">
-                <div className="settings-provider-detail-head">
-                  <h3 className="settings-pane-title">{selectedProviderMeta.label}</h3>
-                  <p className="settings-provider-detail-runtime">{selectedRuntimeHint}</p>
-                </div>
+              <div className="settings-field">
+                <label htmlFor="settings-api-key">API 密钥</label>
+                <input
+                  id="settings-api-key"
+                  type="password"
+                  className="dialog-input settings-api-input"
+                  placeholder="粘贴 DeepSeek API Key"
+                  value={selectedProviderConfig.api_key}
+                  onChange={(event) =>
+                    updateProviderField(
+                      selectedProviderId,
+                      "api_key",
+                      event.target.value
+                    )
+                  }
+                />
+              </div>
 
-                {renderRow(
-                  "默认提供商",
-                  <span className="settings-provider-selected">
-                    {apiConfig.preferred_backend
-                      ? `${selectedProviderMeta.label}（已启用）`
-                      : `${selectedProviderMeta.label}（编辑中，保存时将设为默认）`}
-                  </span>,
-                  "provider-selected"
-                )}
-
-                {selectedProviderMeta.supportsBaseUrl &&
-                  renderRow(
-                    selectedProviderMeta.baseUrlLabel ?? "接口地址",
-                    <input
-                      type="url"
-                      className="dialog-input settings-api-input"
-                      placeholder={
-                        selectedProviderMeta.defaultBaseUrl || "https://api.example.com/v1"
-                      }
-                      value={selectedProviderConfig.base_url}
-                      onChange={(event) =>
-                        updateProviderField(
-                          selectedProviderId,
-                          "base_url",
-                          event.target.value
-                        )
-                      }
-                    />
-                  )}
-
-                {selectedProviderMeta.requiresApiKey &&
-                  renderRow(
-                    "API 密钥",
-                    <div className="settings-pane-stack">
-                      <input
-                        type="password"
-                        className="dialog-input settings-api-input"
-                        placeholder={`填写 ${selectedProviderMeta.label} 的密钥`}
-                        value={selectedProviderConfig.api_key}
-                        onChange={(event) =>
-                          updateProviderField(
-                            selectedProviderId,
-                            "api_key",
-                            event.target.value
-                          )
-                        }
-                      />
-                    </div>
-                  )}
-
-                {renderRow(
-                  "模型",
-                  <input
-                    type="text"
-                    className="dialog-input settings-api-input"
-                    placeholder={selectedProviderMeta.defaultModel}
-                    value={selectedProviderConfig.model}
-                    onChange={(event) =>
-                      updateProviderField(
-                        selectedProviderId,
-                        "model",
-                        event.target.value
-                      )
-                    }
-                  />
-                )}
-
-                {selectedProviderId === "ollama" &&
-                  renderRow(
-                    "",
-                    <>
-                      <button
-                        type="button"
-                        className="dialog-btn secondary"
-                        onClick={testOllama}
-                      >
-                        测试连接
-                      </button>
-                      {ollamaTestResult && (
-                        <span
-                          className={`settings-status ${
-                            ollamaTestResult.ok
-                              ? "settings-status-ok"
-                              : "settings-status-err"
-                          }`}
-                        >
-                          {ollamaTestResult.msg}
-                        </span>
-                      )}
-                    </>,
-                    "ollama-test"
-                  )}
-
-                {renderRow(
-                  "",
-                  <>
-                    <button type="button" className="dialog-btn primary" onClick={saveConfig}>
-                      保存 LLM 配置
-                    </button>
-                    {llmStatus && <span className="settings-status">{llmStatus}</span>}
-                  </>,
-                  "llm-save"
-                )}
+              <div className="settings-model-actions">
+                <button type="button" className="dialog-btn primary" onClick={saveConfig}>
+                  保存
+                </button>
+                {llmStatus && <span className="settings-status">{llmStatus}</span>}
               </div>
             </div>
           )}
@@ -624,7 +428,7 @@ export function SettingsDialog({
           {activeTab === "comsol" && (
             <div className="settings-card">
               <div className="settings-field">
-                <label>当前工作空间</label>
+                <label>工作空间</label>
                 <div className="settings-path-row">
                   <input
                     type="text"
@@ -643,18 +447,18 @@ export function SettingsDialog({
                     onClick={pickWorkspaceDir}
                     disabled={!state.currentConversationId}
                   >
-                    修改目录
+                    修改
                   </button>
                 </div>
               </div>
 
               <div className="settings-field">
-                <label>COMSOL 6.3 plugins 目录（COMSOL_JAR_PATH）</label>
+                <label>COMSOL plugins</label>
                 <div className="settings-path-row">
                   <input
                     type="text"
                     className="dialog-input settings-api-input settings-path-input"
-                    placeholder="Windows: ...\COMSOL63\Multiphysics\plugins；macOS: /Applications/COMSOL63/Multiphysics/plugins"
+                    placeholder="COMSOL63/Multiphysics/plugins"
                     value={apiConfig.comsol_jar_path}
                     readOnly
                   />
@@ -673,7 +477,7 @@ export function SettingsDialog({
                       )
                     }
                   >
-                    选择目录
+                    选择
                   </button>
                   {apiConfig.comsol_jar_path && (
                     <button
@@ -693,12 +497,12 @@ export function SettingsDialog({
               </div>
 
               <div className="settings-field">
-                <label>Java 8 / 11 环境（JAVA_HOME）</label>
+                <label>JAVA_HOME</label>
                 <div className="settings-path-row">
                   <input
                     type="text"
                     className="dialog-input settings-api-input settings-path-input"
-                    placeholder="未选择时使用内置或系统 Java"
+                    placeholder="留空则使用内置或系统 Java"
                     value={apiConfig.java_home}
                     readOnly
                   />
@@ -714,7 +518,7 @@ export function SettingsDialog({
                       )
                     }
                   >
-                    选择目录
+                    选择
                   </button>
                   {apiConfig.java_home && (
                     <button
@@ -730,20 +534,16 @@ export function SettingsDialog({
                 </div>
               </div>
 
-              {renderRow(
-                "",
-                <>
-                  <button
-                    type="button"
-                    className="dialog-btn primary"
-                    onClick={() => void saveAndSync(apiConfig, "comsol")}
-                  >
-                    保存 COMSOL 配置
-                  </button>
-                  {comsolStatus && <span className="settings-status">{comsolStatus}</span>}
-                </>,
-                "comsol-save"
-              )}
+              <div className="settings-model-actions">
+                <button
+                  type="button"
+                  className="dialog-btn primary"
+                  onClick={() => void saveAndSync(apiConfig, "comsol")}
+                >
+                  保存
+                </button>
+                {comsolStatus && <span className="settings-status">{comsolStatus}</span>}
+              </div>
             </div>
           )}
 
@@ -751,7 +551,7 @@ export function SettingsDialog({
             <div className="settings-pane-rows">
               <div className="settings-card">
                 <div className="settings-card-head">
-                  <h3 className="settings-pane-title">案例库模型记录</h3>
+                  <h3 className="settings-pane-title">案例记录</h3>
                   <div className="settings-models-item-actions">
                     <button
                       type="button"
@@ -823,7 +623,7 @@ export function SettingsDialog({
 
               <div className="settings-card">
                 <div className="settings-card-head">
-                  <h3 className="settings-pane-title">我创建的 COMSOL 模型</h3>
+                  <h3 className="settings-pane-title">我创建的模型</h3>
                   <button
                     type="button"
                     className="dialog-btn secondary"
