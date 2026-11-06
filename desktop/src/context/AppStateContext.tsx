@@ -30,8 +30,6 @@ import {
   saveMessagesByConversation,
   loadCurrentConversationId,
   saveCurrentConversationId,
-  loadWorkspaceDir,
-  saveWorkspaceDir,
 } from "../lib/conversationStorage";
 import {
   loadApiConfig,
@@ -61,6 +59,7 @@ interface AppState {
   conversationGroups: ConversationGroup[];
   currentConversationId: string | null;
   messagesByConversation: Record<string, ChatMessage[]>;
+  /** 当前工作空间根目录（由当前会话派生） */
   workspaceDir: string | null;
   view: AppView;
   settingsTab: SettingsSection;
@@ -82,9 +81,10 @@ interface AppState {
 }
 
 type AppAction =
-  | { type: "NEW_CONVERSATION" }
+  | { type: "NEW_CONVERSATION"; workspaceDir: string }
   | { type: "SWITCH_CONVERSATION"; id: string }
   | { type: "SET_CONVERSATION_TITLE"; id: string; title: string }
+  | { type: "SET_CONVERSATION_WORKSPACE_DIR"; id: string; path: string }
   | { type: "DELETE_CONVERSATION"; id: string }
   | { type: "ADD_CONVERSATION_GROUP"; name: string }
   | { type: "RENAME_CONVERSATION_GROUP"; id: string; name: string }
@@ -121,8 +121,32 @@ type AppAction =
   | { type: "CLEAR_PLAN_QUESTIONS" }
   | { type: "SET_LAST_PLAN_INPUT"; input: string | null }
   | { type: "SET_DISCUSSION_READY_FOR_PLAN"; value: boolean }
-  | { type: "SET_WORKSPACE_DIR"; path: string | null }
   | { type: "HYDRATE"; state: Partial<AppState> };
+
+function workspaceDirOf(
+  conversations: Conversation[],
+  currentId: string | null
+): string | null {
+  if (!currentId) return null;
+  const conv = conversations.find((c) => c.id === currentId);
+  const path = conv?.workspaceDir?.trim();
+  return path || null;
+}
+
+const SETTINGS_TABS: SettingsSection[] = [
+  "theme",
+  "llm",
+  "comsol",
+  "models",
+  "case-library",
+];
+
+function normalizeSettingsTab(tab: unknown): SettingsSection {
+  if (typeof tab === "string" && (SETTINGS_TABS as string[]).includes(tab)) {
+    return tab as SettingsSection;
+  }
+  return "theme";
+}
 
 function getInitialState(): AppState {
   const conversations = loadConversations();
@@ -132,23 +156,17 @@ function getInitialState(): AppState {
     ChatMessage[]
   >;
   const currentId = loadCurrentConversationId();
-  const workspaceDir = loadWorkspaceDir();
   const apiCfg = loadApiConfig();
   const preferred = apiCfg.preferred_backend;
   const backend = preferred && isProviderId(preferred) ? preferred : null;
 
   if (conversations.length === 0) {
-    const first: Conversation = {
-      id: genId(),
-      title: "新会话",
-      createdAt: Date.now(),
-    };
     return {
-      conversations: [first],
+      conversations: [],
       conversationGroups,
-      currentConversationId: first.id,
-      messagesByConversation: { [first.id]: [] },
-      workspaceDir,
+      currentConversationId: null,
+      messagesByConversation: {},
+      workspaceDir: null,
       view: "session",
       settingsTab: "theme",
       mode: "run",
@@ -172,7 +190,7 @@ function getInitialState(): AppState {
     conversationGroups,
     currentConversationId: id,
     messagesByConversation,
-    workspaceDir,
+    workspaceDir: workspaceDirOf(conversations, id),
     view: "session",
     settingsTab: "theme",
     mode: "run",
@@ -193,16 +211,21 @@ const initialState = getInitialState();
 function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case "NEW_CONVERSATION": {
+      const workspaceDir = action.workspaceDir.trim();
+      if (!workspaceDir) return state;
+      const folderName = workspaceDir.split(/[/\\]/).filter(Boolean).pop() || "工作空间";
       const conv: Conversation = {
         id: genId(),
-        title: "新会话",
+        title: folderName,
         createdAt: Date.now(),
+        workspaceDir,
         groupId: null,
       };
       return {
         ...state,
         conversations: [conv, ...state.conversations],
         currentConversationId: conv.id,
+        workspaceDir,
         messagesByConversation: {
           ...state.messagesByConversation,
           [conv.id]: [],
@@ -251,6 +274,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         currentConversationId: action.id,
+        workspaceDir: workspaceDirOf(state.conversations, action.id),
         discussionReadyForPlan: false,
         view: "session",
       };
@@ -260,29 +284,37 @@ function appReducer(state: AppState, action: AppAction): AppState {
       );
       return { ...state, conversations: list };
     }
+    case "SET_CONVERSATION_WORKSPACE_DIR": {
+      const path = action.path.trim();
+      if (!path) return state;
+      const list = state.conversations.map((c) =>
+        c.id === action.id ? { ...c, workspaceDir: path } : c
+      );
+      return {
+        ...state,
+        conversations: list,
+        workspaceDir:
+          state.currentConversationId === action.id
+            ? path
+            : state.workspaceDir,
+      };
+    }
     case "DELETE_CONVERSATION": {
       const list = state.conversations.filter((c) => c.id !== action.id);
       const nextMessages = { ...state.messagesByConversation };
       delete nextMessages[action.id];
-      let nextId = state.currentConversationId;
-      let nextList = list;
-      if (state.currentConversationId === action.id) {
-        nextId = list.length > 0 ? list[0].id : null;
-      }
-      if (list.length === 0) {
-        const newConv: Conversation = {
-          id: genId(),
-          title: "新会话",
-          createdAt: Date.now(),
-        };
-        nextList = [newConv];
-        nextId = newConv.id;
-      }
+      const nextId =
+        state.currentConversationId === action.id
+          ? list.length > 0
+            ? list[0].id
+            : null
+          : state.currentConversationId;
       return {
         ...state,
-        conversations: nextList,
+        conversations: list,
         messagesByConversation: nextMessages,
         currentConversationId: nextId,
+        workspaceDir: workspaceDirOf(list, nextId),
       };
     }
     case "ADD_MESSAGE": {
@@ -376,12 +408,14 @@ function appReducer(state: AppState, action: AppAction): AppState {
       if (action.view === "session") return { ...state, view: "session" };
       const openedFromView: Partial<Record<AppView, SettingsSection>> = {
         "case-library": "case-library",
-        "skills-system": "skills",
-        "ops-catalog": "ops",
       };
       const settingsTab =
         action.settingsTab ?? openedFromView[action.view] ?? state.settingsTab;
-      return { ...state, view: "settings", settingsTab };
+      return {
+        ...state,
+        view: "settings",
+        settingsTab: normalizeSettingsTab(settingsTab),
+      };
     }
     case "SET_DISCUSSION_READY_FOR_PLAN":
       return { ...state, discussionReadyForPlan: action.value };
@@ -415,21 +449,17 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, pendingPlanQuestions: null };
     case "SET_LAST_PLAN_INPUT":
       return { ...state, lastPlanInput: action.input };
-    case "SET_WORKSPACE_DIR":
-      return { ...state, workspaceDir: action.path };
     case "HYDRATE": {
       const next = { ...state, ...action.state };
       const openedFromView: Partial<Record<AppView, SettingsSection>> = {
         "case-library": "case-library",
-        "skills-system": "skills",
-        "ops-catalog": "ops",
       };
       const mapped = openedFromView[next.view];
       if (mapped) {
         next.view = "settings";
         next.settingsTab = mapped;
       }
-      if (!next.settingsTab) next.settingsTab = "theme";
+      next.settingsTab = normalizeSettingsTab(next.settingsTab);
       return next;
     }
     default:
@@ -529,10 +559,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       saveCurrentConversationId(state.currentConversationId);
     }
   }, [state.currentConversationId]);
-
-  useEffect(() => {
-    saveWorkspaceDir(state.workspaceDir);
-  }, [state.workspaceDir]);
 
   const value: AppStateContextValue = {
     state,

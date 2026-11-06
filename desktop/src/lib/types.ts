@@ -29,18 +29,15 @@ export interface RunEvent {
 }
 
 export type AgentMode = "discuss" | "plan" | "run";
-export type AppView = "session" | "case-library" | "skills-system" | "ops-catalog" | "settings";
+export type AppView = "session" | "case-library" | "settings";
 
-/** 设置页内的分区。案例库、技能和操作清单都在这里。 */
+/** 设置页内的分区 */
 export type SettingsSection =
   | "theme"
   | "llm"
   | "comsol"
-  | "memory"
   | "models"
-  | "case-library"
-  | "skills"
-  | "ops";
+  | "case-library";
 
 /** 对话框类型 */
 export type DialogType =
@@ -51,15 +48,16 @@ export type DialogType =
   | "exec"
   | "output"
   | "settings"
-  | "ops"
   | "api"
   | "planQuestions";
 
-/** 会话摘要 */
+/** 会话摘要；一项会话对应一个本地工作空间根目录 */
 export interface Conversation {
   id: string;
   title: string;
   createdAt: number;
+  /** 工作空间根目录；其下固定有 context/、models/、plans/ */
+  workspaceDir?: string | null;
   groupId?: string | null;
 }
 
@@ -154,7 +152,6 @@ export type PromptExtensionName =
   | "plan"
   | "run"
   | "case"
-  | "ops"
   | "api"
   | "exec"
   | "backend"
@@ -177,7 +174,6 @@ export const PROMPT_EXTENSION_ITEMS: PromptExtensionItem[] = [
   { name: "plan", label: "切换到规划", description: "切换到 Plan，生成建模计划与澄清", icon: "task-square" },
   { name: "run", label: "切换到执行", description: "切换到 Run，按需求调用 COMSOL 建模", icon: "play" },
   { name: "case", label: "读取 .mph 案例", description: "选择 .mph 文件并生成结构化案例摘要", icon: "document" },
-  { name: "ops", label: "COMSOL 操作清单", description: "打开 COMSOL 可执行操作清单页", icon: "code-1" },
   {
     name: "api",
     label: "官方 API 浏览",
@@ -285,7 +281,7 @@ export const USAGE_WORKFLOW_STEPS: UsageWorkflowStep[] = [
     step: 5,
     title: "扩展功能",
     body:
-      "点击输入框左侧 + 可打开扩展功能，包括帮助、COMSOL 操作清单、官方 API、后端设置、环境诊断等。",
+      "点击输入框左侧 + 可打开扩展功能，包括帮助、官方 API、后端设置、环境诊断等。",
   },
 ];
 
@@ -303,7 +299,7 @@ export const QUICK_PROMPT_GROUPS: QuickPromptGroup[] = [
     hint: "类似案例库中的热-结构支架/夹具模型，一次性走完几何 + 材料 + 物理场 + 研究 + 求解 + 结果导出",
     prompts: [
       {
-        label: "3D 支架热应力（完整流程）",
+        label: "3D 支架热应力",
         text:
           "构建一个 3D 铝合金支架热-结构耦合模型：1）几何为 0.2 m × 0.1 m × 0.05 m 的带两个圆孔的支架实体；" +
           "2）材料采用铝合金（Aluminum），给出典型 E=70e9 Pa、nu=0.33、density=2700 kg/m^3、导热系数和比热；" +
@@ -320,7 +316,7 @@ export const QUICK_PROMPT_GROUPS: QuickPromptGroup[] = [
     hint: "类似“冷却通道/换热器”案例，一次性构建流体 + 传热耦合 3D 模型并导出结果",
     prompts: [
       {
-        label: "3D 管道内部对流换热",
+        label: "管道对流换热",
         text:
           "创建一个 3D 管道内部强制对流换热模型：1）几何为长度 1 m、内径 0.02 m 的圆柱形流道，外部包覆 0.005 m 厚的固体壁；" +
           "2）流体域为水（Water, 300 K），固体壁为钢或铜（给出典型导热系数和比热）；" +
@@ -336,7 +332,7 @@ export const QUICK_PROMPT_GROUPS: QuickPromptGroup[] = [
     hint: "类似“感应线圈加热”或“电磁-热耦合”案例，包含电磁场 + 电阻发热 + 稳态传热",
     prompts: [
       {
-        label: "3D 铜线圈电热耦合",
+        label: "铜线圈电热",
         text:
           "构建一个 3D 铜线圈电磁-热耦合模型：1）几何为若干匝的环形铜线圈，包围一个钢制被加热工件（可简化为圆柱或方块），外部为空气域；" +
           "2）线圈材料为铜（Copper），工件材料为钢（Steel），空气域为空气；" +
@@ -353,7 +349,7 @@ export const QUICK_PROMPT_GROUPS: QuickPromptGroup[] = [
     hint: "类似“多孔散热器/散热片优化”案例，包含参数化扫描与结果导出",
     prompts: [
       {
-        label: "3D 散热器参数化扫描",
+        label: "散热器参数扫描",
         text:
           "构建一个 3D 散热器稳态传热参数化扫描模型：1）几何为一个 0.1 m × 0.1 m × 0.01 m 的基板，上方布置多排散热片（高度约 0.03 m，厚度和间距作为参数）；" +
           "2）材料采用铝（Aluminum）；" +
@@ -369,17 +365,9 @@ export const QUICK_PROMPT_GROUPS: QuickPromptGroup[] = [
     hint: "目标是“像案例库作品一样”具备可复现输入、求解与可交付结果（图/数据）",
     prompts: [
       {
-        label: "稳态传热（导出温度场图）",
+        label: "2D 稳态传热",
         text: "做一个 2D 稳态传热案例：矩形板 0.2 m × 0.1 m，材料用铝（Aluminum）；左边界温度 373.15 K，右边界温度 293.15 K，上下边界绝热；生成网格，稳态求解；求解后导出温度场图像到 output/quickcase_heat_T.png（若需要可自动创建目录）。",
       },
-    ],
-  },
-  {
-    title: "诊断与工具",
-    hint: "环境检查与帮助面板",
-    prompts: [
-      { label: "环境诊断", text: "", extensionName: "doctor" },
-      { label: "帮助", text: "", extensionName: "help" },
     ],
   },
 ];

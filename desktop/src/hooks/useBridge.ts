@@ -203,9 +203,6 @@ export function useBridge() {
         case "help":
           dispatch({ type: "SET_DIALOG", dialog: "help" });
           return;
-        case "ops":
-          dispatch({ type: "SET_VIEW", view: "ops-catalog" });
-          return;
         case "api":
           dispatch({ type: "SET_DIALOG", dialog: "api" });
           return;

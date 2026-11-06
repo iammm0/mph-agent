@@ -348,13 +348,10 @@ def do_run(
 
     try:
         if use_react:
-            if workspace_dir and conversation_id:
-                output_dir = context_manager.context_dir
-            elif workspace_dir:
-                output_dir = Path(workspace_dir).expanduser().resolve()
-                output_dir.mkdir(parents=True, exist_ok=True)
+            if workspace_dir:
+                output_dir = context_manager.models_dir
             else:
-                output_dir = context_manager.context_dir if conversation_id else None
+                output_dir = context_manager.models_dir if conversation_id else None
             if conversation_id:
                 context_manager.start_run_log(user_input)
                 log_action(

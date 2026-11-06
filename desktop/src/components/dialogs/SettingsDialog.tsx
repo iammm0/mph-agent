@@ -19,8 +19,6 @@ import {
 } from "../../lib/apiConfig";
 import type { BridgeResponse, MyComsolModel, SettingsSection } from "../../lib/types";
 import { CaseLibraryPage } from "../CaseLibraryPage";
-import { SkillsSystemPage } from "../SkillsSystemPage";
-import { OpsCatalogPage } from "../OpsCatalogPage";
 import {
   clearCaseLibraryRecords,
   loadCaseLibraryRecords,
@@ -33,10 +31,7 @@ const TABS: { id: SettingsSection; label: string; icon: string; group: "config" 
   { id: "llm", label: "LLM 配置", icon: "cpu", group: "config" },
   { id: "comsol", label: "COMSOL 配置", icon: "3dcube", group: "config" },
   { id: "models", label: "模型管理", icon: "folder-2", group: "config" },
-  { id: "memory", label: "记忆管理", icon: "note-2", group: "config" },
   { id: "case-library", label: "案例库", icon: "book", group: "library" },
-  { id: "skills", label: "技能系统", icon: "flash", group: "library" },
-  { id: "ops", label: "操作清单", icon: "code-1", group: "library" },
 ];
 
 const PROVIDER_GROUP_LABELS: Record<ProviderCatalogEntry["group"], string> = {
@@ -61,12 +56,19 @@ function providerConnectionHint(providerId: LLMBackendId): string {
   return "兼容";
 }
 
+function modelsDirOf(workspaceDir: string | null): string {
+  if (!workspaceDir) return "";
+  const sep = workspaceDir.includes("\\") ? "\\" : "/";
+  const trimmed = workspaceDir.replace(/[/\\]+$/, "");
+  return `${trimmed}${sep}models`;
+}
+
 function buildComsolEnv(
   config: ApiConfig,
   workspaceDir: string | null
 ): Record<string, string> {
   return {
-    MODEL_OUTPUT_DIR: workspaceDir ?? "",
+    MODEL_OUTPUT_DIR: modelsDirOf(workspaceDir),
     COMSOL_JAR_PATH: config.comsol_jar_path,
     JAVA_HOME: config.java_home,
   };
@@ -82,34 +84,12 @@ function formatTime(value: number | null): string {
   return new Date(value).toLocaleString();
 }
 
-function parseMemoryItems(text: string): string[] {
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) =>
-      line
-        .replace(/^[-*•]\s+/, "")
-        .replace(/^\d+[.)、]\s+/, "")
-        .trim()
-    );
-}
-
-function serializeMemoryItems(items: string[]): string {
-  return items
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map((item) => (/[:：]$/.test(item) ? item : `- ${item}`))
-    .join("\n");
-}
-
 export function SettingsDialog({
   onClose,
   pageMode = false,
 }: SettingsDialogProps) {
   const { themeMode, accentColor, setThemeMode, setAccentColor } = useTheme();
   const { state, dispatch } = useAppState();
-  const cid = state.currentConversationId;
 
   const providerCatalog = useMemo(() => getProviderCatalog(), []);
 
@@ -117,8 +97,6 @@ export function SettingsDialog({
   const setActiveTab = (tab: SettingsSection) =>
     dispatch({ type: "SET_VIEW", view: "settings", settingsTab: tab });
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => loadApiConfig());
-  const [memoryItems, setMemoryItems] = useState<string[]>([]);
-  const [memoryStatus, setMemoryStatus] = useState("");
   const [llmStatus, setLlmStatus] = useState("");
   const [comsolStatus, setComsolStatus] = useState("");
   const [ollamaTestResult, setOllamaTestResult] = useState<{
@@ -146,10 +124,6 @@ export function SettingsDialog({
     if (rt === "kimi") return "请求发往 Moonshot 官方接口（Python 内置映射）。";
     return "按 OpenAI 兼容协议请求你填写的 Base URL，由 Python 映射为 openai-compatible 运行时。";
   })();
-  const serializedMemoryText = useMemo(
-    () => serializeMemoryItems(memoryItems),
-    [memoryItems]
-  );
 
   const providersByGroup = useMemo(() => {
     const groups: Record<
@@ -280,21 +254,25 @@ export function SettingsDialog({
   }, [apiConfig, dispatch, saveAndSync, selectedProviderId]);
 
   const pickWorkspaceDir = useCallback(async () => {
+    const cid = state.currentConversationId;
+    if (!cid) {
+      setComsolStatus("请先在侧边栏新建工作空间");
+      return;
+    }
     const selected = await open({
       directory: true,
       multiple: false,
-      title: "选择建模工作目录（mph 输出目录）",
+      title: "修改当前工作空间目录",
       defaultPath: state.workspaceDir || undefined,
     });
     if (selected == null) return;
-    dispatch({ type: "SET_WORKSPACE_DIR", path: String(selected) });
-    setComsolStatus("工作目录已更新，请点击保存同步到后端");
-  }, [state.workspaceDir, dispatch]);
-
-  const clearWorkspaceDir = useCallback(() => {
-    dispatch({ type: "SET_WORKSPACE_DIR", path: null });
-    setComsolStatus("工作目录已清除，请点击保存同步到后端");
-  }, [dispatch]);
+    dispatch({
+      type: "SET_CONVERSATION_WORKSPACE_DIR",
+      id: cid,
+      path: String(selected),
+    });
+    setComsolStatus("当前工作空间目录已更新，请点击保存同步到后端");
+  }, [state.currentConversationId, state.workspaceDir, dispatch]);
 
   const pickDirectory = useCallback(
     (title: string, currentPath: string, onPick: (path: string) => void) => {
@@ -323,74 +301,6 @@ export function SettingsDialog({
       setOllamaTestResult({ ok: false, msg: String(error) });
     }
   }, [apiConfig]);
-
-  const loadMemory = useCallback(async () => {
-    if (!cid) {
-      setMemoryStatus("当前没有会话");
-      return;
-    }
-    setMemoryStatus("加载中...");
-    try {
-      const res = await invoke<{ ok: boolean; message: string }>("bridge_send", {
-        cmd: "context_get_summary",
-        payload: { conversation_id: cid },
-      });
-      setMemoryItems(res.ok ? parseMemoryItems(res.message) : []);
-      setMemoryStatus(res.ok ? "已加载" : res.message);
-    } catch (error) {
-      setMemoryStatus(`加载失败：${String(error)}`);
-    }
-    window.setTimeout(() => setMemoryStatus(""), 3000);
-  }, [cid]);
-
-  const saveMemory = useCallback(async () => {
-    if (!cid) {
-      setMemoryStatus("当前没有会话");
-      return;
-    }
-    setMemoryStatus("保存中...");
-    try {
-      const res = await invoke<{ ok: boolean; message: string }>("bridge_send", {
-        cmd: "context_set_summary",
-        payload: { conversation_id: cid, text: serializedMemoryText },
-      });
-      setMemoryStatus(res.ok ? "记忆已保存" : res.message);
-    } catch (error) {
-      setMemoryStatus(`保存失败：${String(error)}`);
-    }
-    window.setTimeout(() => setMemoryStatus(""), 3000);
-  }, [cid, serializedMemoryText]);
-
-  const clearMemory = useCallback(async () => {
-    if (!cid) return;
-    if (!confirm("确定清除本会话的对话历史与记忆吗？")) return;
-    setMemoryStatus("清除中...");
-    try {
-      const res = await invoke<{ ok: boolean; message: string }>("bridge_send", {
-        cmd: "context_clear",
-        payload: { conversation_id: cid },
-      });
-      setMemoryItems([]);
-      setMemoryStatus(res.ok ? "已清除" : res.message);
-    } catch (error) {
-      setMemoryStatus(`清除失败：${String(error)}`);
-    }
-    window.setTimeout(() => setMemoryStatus(""), 3000);
-  }, [cid]);
-
-  const addMemoryItem = useCallback(() => {
-    setMemoryItems((current) => [...current, ""]);
-  }, []);
-
-  const updateMemoryItem = useCallback((index: number, value: string) => {
-    setMemoryItems((current) =>
-      current.map((item, itemIndex) => (itemIndex === index ? value : item))
-    );
-  }, []);
-
-  const removeMemoryItem = useCallback((index: number) => {
-    setMemoryItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
-  }, []);
 
   const loadModelsList = useCallback(async () => {
     setModelsLoading(true);
@@ -441,11 +351,6 @@ export function SettingsDialog({
       <header className="settings-dialog-header">
         <div>
           <h2 className="settings-dialog-title">设置中心</h2>
-          {pageMode && (
-            <p className="settings-hint">
-              主题、模型、记忆，以及案例库、技能系统和 COMSOL 操作清单。
-            </p>
-          )}
         </div>
         {pageMode ? (
           <button
@@ -492,9 +397,7 @@ export function SettingsDialog({
 
         <div
           className={`settings-pane${
-            activeTab === "case-library" || activeTab === "skills" || activeTab === "ops"
-              ? " settings-pane--fill"
-              : ""
+            activeTab === "case-library" ? " settings-pane--fill" : ""
           }`}
         >
           {activeTab === "theme" && (
@@ -567,11 +470,6 @@ export function SettingsDialog({
 
           {activeTab === "llm" && (
             <div className="settings-card">
-              <p className="settings-hint">
-                下方按使用场景分组；保存后表单会重新载入本地配置。后端实际仍映射为四类协议：DeepSeek、Kimi、Ollama、OpenAI
-                兼容。
-              </p>
-
               <div className="settings-provider-groups">
                 {PROVIDER_GROUP_ORDER.map((group) => {
                   const providers = providersByGroup[group];
@@ -592,7 +490,6 @@ export function SettingsDialog({
                                 active ? "active" : ""
                               }`}
                               onClick={() => setPreferredBackend(provider.id)}
-                              title={provider.description}
                             >
                               <span className="settings-provider-card-head">
                                 <span className="settings-provider-card-name">
@@ -601,9 +498,6 @@ export function SettingsDialog({
                                 <span className="settings-provider-card-runtime">
                                   {providerConnectionHint(provider.id)}
                                 </span>
-                              </span>
-                              <span className="settings-provider-card-desc">
-                                {provider.description}
                               </span>
                             </button>
                           );
@@ -616,10 +510,7 @@ export function SettingsDialog({
 
               <div className="settings-provider-detail">
                 <div className="settings-provider-detail-head">
-                  <div>
-                    <h3 className="settings-pane-title">{selectedProviderMeta.label}</h3>
-                    <p className="settings-hint">{selectedProviderMeta.description}</p>
-                  </div>
+                  <h3 className="settings-pane-title">{selectedProviderMeta.label}</h3>
                   <p className="settings-provider-detail-runtime">{selectedRuntimeHint}</p>
                 </div>
 
@@ -670,9 +561,6 @@ export function SettingsDialog({
                           )
                         }
                       />
-                      <p className="settings-field-note">
-                        保存后仍显示为圆点属正常；是否生效以保存后下方提示里的模型名为准。
-                      </p>
                     </div>
                   )}
 
@@ -735,23 +623,17 @@ export function SettingsDialog({
 
           {activeTab === "comsol" && (
             <div className="settings-card">
-              <p className="settings-hint">
-                管理面向 COMSOL Multiphysics 6.3 自动建模所需的输出目录、JAR 路径和 Java 运行环境。
-                当前官方支持 Windows x64 与 macOS Apple Silicon：Windows 选择
-                <code>C:\Program Files\COMSOL\COMSOL63\Multiphysics\plugins</code>，
-                Apple Silicon 选择 <code>/Applications/COMSOL63/Multiphysics/plugins</code>。
-              </p>
-
               <div className="settings-field">
-                <label>工作空间</label>
-                <p className="settings-hint">
-                  对话记录、计划、操作过程和模型文件都放在这个目录里，每个对话单独一个文件夹。
-                </p>
+                <label>当前工作空间</label>
                 <div className="settings-path-row">
                   <input
                     type="text"
                     className="dialog-input settings-api-input settings-path-input"
-                    placeholder="未设置时使用默认输出目录"
+                    placeholder={
+                      state.currentConversationId
+                        ? "尚未绑定目录"
+                        : "请先新建工作空间"
+                    }
                     value={state.workspaceDir ?? ""}
                     readOnly
                   />
@@ -759,18 +641,10 @@ export function SettingsDialog({
                     type="button"
                     className="dialog-btn secondary"
                     onClick={pickWorkspaceDir}
+                    disabled={!state.currentConversationId}
                   >
-                    选择目录
+                    修改目录
                   </button>
-                  {state.workspaceDir && (
-                    <button
-                      type="button"
-                      className="dialog-btn secondary"
-                      onClick={clearWorkspaceDir}
-                    >
-                      清除
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -873,78 +747,11 @@ export function SettingsDialog({
             </div>
           )}
 
-          {activeTab === "memory" && (
-            <>
-              <div className="settings-card">
-              <h3 className="settings-pane-title">本会话记住的内容</h3>
-              <p className="settings-hint">
-                这些条目会带入后续建模。改完后保存即可。
-              </p>
-
-              {renderRow(
-                "",
-                <div className="settings-memory-actions">
-                  <button type="button" className="dialog-btn secondary" onClick={loadMemory}>
-                    加载
-                  </button>
-                  <button type="button" className="dialog-btn primary" onClick={saveMemory}>
-                    保存
-                  </button>
-                  <button type="button" className="dialog-btn secondary" onClick={addMemoryItem}>
-                    新增条目
-                  </button>
-                  <button type="button" className="dialog-btn secondary" onClick={clearMemory}>
-                    清除本会话记忆
-                  </button>
-                </div>,
-                "memory-actions"
-              )}
-
-              <div className="settings-field">
-                <label>会话记忆条目</label>
-                <div className="settings-memory-list">
-                  {memoryItems.length === 0 && (
-                    <div className="settings-memory-empty">
-                      暂无记忆条目，可先点击“加载”或“新增条目”。
-                    </div>
-                  )}
-                  {memoryItems.map((item, index) => (
-                    <div key={`memory-item-${index}`} className="settings-memory-item">
-                      <span className="settings-memory-item-index">{index + 1}</span>
-                      <textarea
-                        className="dialog-input settings-memory-item-input"
-                        placeholder="输入一条记忆，例如：常用单位是 mm。"
-                        value={item}
-                        onChange={(event) => updateMemoryItem(index, event.target.value)}
-                        rows={2}
-                      />
-                      <button
-                        type="button"
-                        className="dialog-btn secondary"
-                        onClick={() => removeMemoryItem(index)}
-                      >
-                        删除
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {memoryStatus && <div className="settings-status">{memoryStatus}</div>}
-            </div>
-            </>
-          )}
-
           {activeTab === "models" && (
             <div className="settings-pane-rows">
               <div className="settings-card">
                 <div className="settings-card-head">
-                  <div>
-                    <h3 className="settings-pane-title">案例库模型记录</h3>
-                    <p className="settings-hint">
-                      这里管理从案例库点击“查看详情”或“下载案例”时留下的记录，方便再次打开或清理。
-                    </p>
-                  </div>
+                  <h3 className="settings-pane-title">案例库模型记录</h3>
                   <div className="settings-models-item-actions">
                     <button
                       type="button"
@@ -1016,12 +823,7 @@ export function SettingsDialog({
 
               <div className="settings-card">
                 <div className="settings-card-head">
-                  <div>
-                    <h3 className="settings-pane-title">我创建的 COMSOL 模型</h3>
-                    <p className="settings-hint">
-                      以下为各会话中生成过的 COMSOL 模型，可打开目录或预览 operations.md。
-                    </p>
-                  </div>
+                  <h3 className="settings-pane-title">我创建的 COMSOL 模型</h3>
                   <button
                     type="button"
                     className="dialog-btn secondary"
@@ -1070,8 +872,6 @@ export function SettingsDialog({
             </div>
           )}
           {activeTab === "case-library" && <CaseLibraryPage />}
-          {activeTab === "skills" && <SkillsSystemPage />}
-          {activeTab === "ops" && <OpsCatalogPage />}
         </div>
       </div>
     </div>

@@ -78,39 +78,66 @@ export function Sidebar() {
     setDeleteConfirmId(id);
   }, []);
 
-  const pickWorkspace = useCallback(async () => {
+  const createWorkspace = useCallback(async () => {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: "创建或选择工作空间",
-      defaultPath: state.workspaceDir || undefined,
+      title: "选择工作空间目录",
     });
     if (selected == null) return;
     const path = String(selected);
-    dispatch({ type: "SET_WORKSPACE_DIR", path });
+    dispatch({ type: "NEW_CONVERSATION", workspaceDir: path });
+    const modelsDir = path.replace(/[/\\]+$/, "") + (path.includes("\\") ? "\\models" : "/models");
     void invoke("bridge_send", {
       cmd: "config_save",
-      payload: { config: { MODEL_OUTPUT_DIR: path } },
+      payload: {
+        workspace_dir: path,
+        config: { MODEL_OUTPUT_DIR: modelsDir },
+      },
     }).catch(() => {});
-  }, [dispatch, state.workspaceDir]);
+  }, [dispatch]);
+
+  const changeWorkspaceDir = useCallback(
+    async (id: string, currentPath?: string | null) => {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "修改工作空间目录",
+        defaultPath: currentPath || undefined,
+      });
+      if (selected == null) return;
+      const path = String(selected);
+      dispatch({ type: "SET_CONVERSATION_WORKSPACE_DIR", id, path });
+      if (id === state.currentConversationId) {
+        const modelsDir =
+          path.replace(/[/\\]+$/, "") + (path.includes("\\") ? "\\models" : "/models");
+        void invoke("bridge_send", {
+          cmd: "config_save",
+          payload: { config: { MODEL_OUTPUT_DIR: modelsDir } },
+        }).catch(() => {});
+      }
+    },
+    [dispatch, state.currentConversationId]
+  );
 
   const confirmDelete = useCallback(async () => {
     if (!deleteConfirmId) return;
     const id = deleteConfirmId;
+    const conv = state.conversations.find((c) => c.id === id);
     setDeleteConfirmId(null);
     try {
       await invoke("bridge_send", {
         cmd: "conversation_delete",
         payload: {
           conversation_id: id,
-          workspace_dir: state.workspaceDir ?? undefined,
+          workspace_dir: conv?.workspaceDir ?? undefined,
         },
       });
     } catch {
       // 后端失败时仍删除本地会话
     }
     dispatch({ type: "DELETE_CONVERSATION", id });
-  }, [deleteConfirmId, dispatch, state.workspaceDir]);
+  }, [deleteConfirmId, dispatch, state.conversations]);
 
   return (
     <aside className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
@@ -128,40 +155,27 @@ export function Sidebar() {
       <button
         type="button"
         className="sidebar-new"
-        onClick={() => dispatch({ type: "NEW_CONVERSATION" })}
-        title="新建对话"
-        aria-label="新建对话"
+        onClick={() => void createWorkspace()}
+        title="新建工作空间"
+        aria-label="新建工作空间"
       >
-        {collapsed ? <Icon name="add" size={16} /> : <><Icon name="add" size={14} /> 新建对话</>}
+        {collapsed ? (
+          <Icon name="add" size={16} />
+        ) : (
+          <>
+            <Icon name="add" size={14} /> 新建工作空间
+          </>
+        )}
       </button>
       {!collapsed && (
         <>
-          <div className="sidebar-workspace">
-            <div className="sidebar-section-title">工作空间</div>
-            <button
-              type="button"
-              className="sidebar-workspace-pick"
-              onClick={() => void pickWorkspace()}
-              title={state.workspaceDir || "创建工作空间"}
-            >
-              <Icon name="folder-2" size={14} />
-              <span>{state.workspaceDir ? shortPath(state.workspaceDir) : "创建工作空间"}</span>
-            </button>
-            {state.workspaceDir && (
-              <button
-                type="button"
-                className="sidebar-workspace-open"
-                onClick={() => invoke("open_path", { path: state.workspaceDir }).catch(() => {})}
-              >
-                打开目录
-              </button>
-            )}
-            <p className="sidebar-workspace-hint">
-              对话记录、计划、过程文件和模型都放在这个目录里。
-            </p>
-          </div>
-          <div className="sidebar-section-title">会话</div>
+          <div className="sidebar-section-title">工作空间</div>
           <div className="sidebar-list">
+            {state.conversations.length === 0 && (
+              <p className="sidebar-empty-hint">
+                先选择一个本地目录，创建工作空间。对话记录、计划与模型会写进其中的 context、models、plans。
+              </p>
+            )}
             {state.conversations.map((conv) => (
               <div
                 key={conv.id}
@@ -192,22 +206,24 @@ export function Sidebar() {
                       }
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    aria-label="重命名对话"
+                    aria-label="重命名工作空间"
                   />
                 ) : (
                   <>
                     <span className="sidebar-item-title">{conv.title}</span>
-                    <span className="sidebar-item-time">{formatTime(conv.createdAt)}</span>
+                    <span className="sidebar-item-time">
+                      {conv.workspaceDir ? shortPath(conv.workspaceDir) : formatTime(conv.createdAt)}
+                    </span>
                     <div className="sidebar-item-menu-wrap">
                       <button
                         type="button"
                         className="sidebar-item-menu-btn"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setMenuOpenId((id) => (id === conv.id ? null : conv.id));
+                          setMenuOpenId((openId) => (openId === conv.id ? null : conv.id));
                         }}
-                        title="会话操作"
-                        aria-label="会话操作"
+                        title="工作空间操作"
+                        aria-label="工作空间操作"
                       >
                         <Icon name="more" size={14} />
                       </button>
@@ -224,6 +240,30 @@ export function Sidebar() {
                           >
                             重命名
                           </button>
+                          <button
+                            type="button"
+                            className="sidebar-item-menu-item"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuOpenId(null);
+                              void changeWorkspaceDir(conv.id, conv.workspaceDir);
+                            }}
+                          >
+                            修改目录
+                          </button>
+                          {conv.workspaceDir && (
+                            <button
+                              type="button"
+                              className="sidebar-item-menu-item"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMenuOpenId(null);
+                                invoke("open_path", { path: conv.workspaceDir }).catch(() => {});
+                              }}
+                            >
+                              打开目录
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="sidebar-item-menu-item danger"
@@ -244,17 +284,6 @@ export function Sidebar() {
           </div>
         </>
       )}
-      {collapsed && (
-        <button
-          type="button"
-          className="sidebar-workspace-icon"
-          onClick={() => void pickWorkspace()}
-          title={state.workspaceDir || "创建工作空间"}
-          aria-label="工作空间"
-        >
-          <Icon name="folder-2" size={16} />
-        </button>
-      )}
       <div className="sidebar-foot">
         <button
           type="button"
@@ -270,8 +299,8 @@ export function Sidebar() {
       </div>
       <ConfirmDialog
         open={deleteConfirmId !== null}
-        title="删除对话"
-        message="确定删除该对话？工作空间里对应的记录和模型文件会一并删除。"
+        title="删除工作空间"
+        message="确定删除该工作空间？其 context、models、plans 中的记录与模型文件会一并删除。"
         confirmLabel="确定"
         cancelLabel="取消"
         danger

@@ -23,10 +23,6 @@ export function HelpDialog() {
           <span className="dialog-row-val">打开帮助面板</span>
         </div>
         <div className="dialog-row">
-          <span className="dialog-row-key">COMSOL 操作清单</span>
-          <span className="dialog-row-val">打开 COMSOL 可执行操作清单页</span>
-        </div>
-        <div className="dialog-row">
           <span className="dialog-row-key">切换到探讨</span>
           <span className="dialog-row-val">切换到 Discuss 模式，与 LLM 理清需求</span>
         </div>

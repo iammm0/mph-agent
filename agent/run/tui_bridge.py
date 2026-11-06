@@ -142,9 +142,18 @@ def _handle(req: dict[str, Any]) -> None:
         _reply(False, "缺少 cmd")
         return
 
-    from agent.utils.context_manager import set_active_workspace_dir
+    from agent.utils.context_manager import (
+        ensure_workspace_layout,
+        set_active_workspace_dir,
+    )
 
-    set_active_workspace_dir(req.get("workspace_dir") or None)
+    workspace_dir = req.get("workspace_dir") or None
+    set_active_workspace_dir(workspace_dir)
+    if workspace_dir:
+        try:
+            ensure_workspace_layout(workspace_dir)
+        except Exception:
+            pass
 
     try:
         if cmd == "run":

@@ -215,9 +215,6 @@ export function CaseLibraryPage() {
       <div className="library-page-header">
         <div>
           <h2 className="library-page-title">案例库</h2>
-          <p className="library-page-desc">
-            只展示本地真实索引数据，不再使用任何前端假案例；当前案例库仅保留 {CASE_LIBRARY_TARGET_VERSION} 下载文件。
-          </p>
         </div>
         <div className="library-page-actions">
           {selectedCase ? (

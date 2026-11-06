@@ -22,6 +22,8 @@ _active_workspace_dir: ContextVar[Optional[str]] = ContextVar(
     default=None,
 )
 
+WORKSPACE_SUBDIRS = ("context", "models", "plans")
+
 
 def set_active_workspace_dir(path: Optional[str]) -> None:
     """当前请求的工作空间。对话产物和过程文件都落在这个目录下。"""
@@ -29,16 +31,25 @@ def set_active_workspace_dir(path: Optional[str]) -> None:
     _active_workspace_dir.set(text or None)
 
 
+def ensure_workspace_layout(root: Path | str) -> Path:
+    """在工作空间根目录下创建固定子目录 context/、models/、plans/。"""
+    workspace = Path(root).expanduser().resolve()
+    workspace.mkdir(parents=True, exist_ok=True)
+    for name in WORKSPACE_SUBDIRS:
+        (workspace / name).mkdir(parents=True, exist_ok=True)
+    return workspace
+
+
 def conversation_storage_dir(
     conversation_id: Optional[str] = None,
     workspace_dir: Optional[str] = None,
 ) -> Path:
-    """有工作空间时，会话目录是 `<workspace>/<conversation_id>`。"""
-    raw = (conversation_id or "default").strip() or "default"
-    name = re.sub(r"[^A-Za-z0-9._-]", "_", raw) or "default"
+    """有工作空间时返回 `<workspace>/context`；否则回退到 `.context/<id>`。"""
     selected = workspace_dir if workspace_dir is not None else _active_workspace_dir.get()
     if selected and str(selected).strip():
-        return Path(selected).expanduser().resolve() / name
+        return ensure_workspace_layout(selected) / "context"
+    raw = (conversation_id or "default").strip() or "default"
+    name = re.sub(r"[^A-Za-z0-9._-]", "_", raw) or "default"
     return get_install_dir() / ".context" / name
 
 
@@ -69,23 +80,58 @@ class ContextSummary:
 
 
 class ContextManager:
-    """Persistence under `.context/<conversation_id>/`."""
+    """Persistence under workspace layout or legacy `.context/<conversation_id>/`.
 
-    def __init__(self, context_dir: Optional[Path] = None, conversation_id: Optional[str] = None):
-        if context_dir is not None:
+    Workspace root:
+      context/  history、discussion、operations、dialog_logs
+      models/   mph 与结果
+      plans/    plan.json、plan_readable.md
+    """
+
+    def __init__(
+        self,
+        context_dir: Optional[Path] = None,
+        conversation_id: Optional[str] = None,
+        workspace_root: Optional[Path | str] = None,
+    ):
+        if workspace_root is not None:
+            self.workspace_root = ensure_workspace_layout(workspace_root)
+            self.context_dir = self.workspace_root / "context"
+            self.models_dir = self.workspace_root / "models"
+            self.plans_dir = self.workspace_root / "plans"
+        elif context_dir is not None:
             self.context_dir = Path(context_dir)
+            # conversation_storage_dir 已指向 workspace/context 时，回推根目录
+            if self.context_dir.name == "context" and (self.context_dir.parent / "models").exists():
+                self.workspace_root = self.context_dir.parent
+                self.models_dir = self.workspace_root / "models"
+                self.plans_dir = self.workspace_root / "plans"
+            elif self.context_dir.name == "context":
+                self.workspace_root = self.context_dir.parent
+                ensure_workspace_layout(self.workspace_root)
+                self.models_dir = self.workspace_root / "models"
+                self.plans_dir = self.workspace_root / "plans"
+            else:
+                self.workspace_root = None
+                self.models_dir = self.context_dir
+                self.plans_dir = self.context_dir
         else:
+            self.workspace_root = None
             base = get_install_dir() / ".context"
             self.context_dir = base / (conversation_id or "default")
+            self.models_dir = self.context_dir
+            self.plans_dir = self.context_dir
 
         self.context_dir.mkdir(parents=True, exist_ok=True)
+        self.models_dir.mkdir(parents=True, exist_ok=True)
+        self.plans_dir.mkdir(parents=True, exist_ok=True)
 
         self.history_file = self.context_dir / "history.json"
         self.summary_file = self.context_dir / "summary.json"
         self.latest_model_file = self.context_dir / "latest_model.txt"
         self.operations_file = self.context_dir / "operations.md"
-        self.plan_file = self.context_dir / "plan.json"
-        self.plan_readable_file = self.context_dir / "plan_readable.md"
+        self.plan_file = self.plans_dir / "plan.json"
+        self.plan_readable_file = self.plans_dir / "plan_readable.md"
         self.discussion_file = self.context_dir / "discussion.json"
         self.cases_dir = self.context_dir / "cases"
         self.dialog_logs_dir = self.context_dir / "dialog_logs"
@@ -942,6 +988,14 @@ class ContextManager:
                     deleted_paths.append(path)
                 except Exception as e:
                     logger.warning("Failed to delete model %s: %s", path, e)
+        # 工作空间只清理固定子目录，不删除用户根目录本身
+        if self.workspace_root is not None:
+            for name in WORKSPACE_SUBDIRS:
+                target = self.workspace_root / name
+                if target.exists():
+                    deleted_paths.append(str(target))
+                    shutil.rmtree(target, ignore_errors=True)
+            return deleted_paths
         self.clear_history()
         if self.context_dir.exists():
             shutil.rmtree(self.context_dir, ignore_errors=True)
@@ -1041,17 +1095,17 @@ def get_context_manager(
 ) -> ContextManager:
     """Get default manager or conversation-scoped manager.
 
-    workspace_dir 非空时，history、plan、operations 和对话日志写到该工作空间内。
+    workspace_dir 非空时使用固定子目录 layout：context/、models/、plans/。
     """
 
     global _context_manager
     if workspace_dir is not None:
         set_active_workspace_dir(workspace_dir)
     selected = workspace_dir if workspace_dir is not None else _active_workspace_dir.get()
-    if conversation_id or selected:
-        return ContextManager(
-            context_dir=conversation_storage_dir(conversation_id, selected)
-        )
+    if selected and str(selected).strip():
+        return ContextManager(workspace_root=selected)
+    if conversation_id:
+        return ContextManager(conversation_id=conversation_id)
     if _context_manager is None:
         _context_manager = ContextManager()
     return _context_manager

@@ -11,7 +11,6 @@ import { ContextDialog } from "./components/dialogs/ContextDialog";
 import { ExecDialog } from "./components/dialogs/ExecDialog";
 import { OutputDialog } from "./components/dialogs/OutputDialog";
 import { SettingsDialog } from "./components/dialogs/SettingsDialog";
-import { ComsolOpsDialog } from "./components/dialogs/ComsolOpsDialog";
 import { ApiBrowserDialog } from "./components/dialogs/ApiBrowserDialog";
 import { PlanQuestionsDialog } from "./components/dialogs/PlanQuestionsDialog";
 
@@ -75,8 +74,6 @@ export default function App() {
         return <ExecDialog onClose={closeDialog} />;
       case "output":
         return <OutputDialog onClose={closeDialog} />;
-      case "ops":
-        return <ComsolOpsDialog onClose={closeDialog} />;
       case "api":
         return <ApiBrowserDialog onClose={closeDialog} />;
       case "planQuestions":
