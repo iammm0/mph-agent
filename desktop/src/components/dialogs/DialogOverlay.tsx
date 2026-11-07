@@ -20,8 +20,14 @@ export function DialogOverlay({ onClose, children, dialogType }: Props) {
     <div
       className={buildDialogClassName("dialog-overlay", dialogType)}
       onClick={handleBackdrop}
+      role="presentation"
     >
-      <div className={buildDialogClassName("dialog-box", dialogType)}>
+      <div
+        className={buildDialogClassName("dialog-box", dialogType)}
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
         {children}
       </div>
     </div>

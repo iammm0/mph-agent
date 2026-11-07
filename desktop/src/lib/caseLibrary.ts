@@ -285,3 +285,101 @@ export async function fetchCaseLibrarySyncStatus(): Promise<CaseLibrarySyncState
     return null;
   }
 }
+
+export interface CaseLibraryDownloadRequestFile {
+  url: string;
+  filename?: string;
+}
+
+export interface CaseLibraryDownloadedFile {
+  url: string;
+  filename: string;
+  path: string;
+  size: number;
+}
+
+export interface CaseLibraryDownloadResult {
+  ok: boolean;
+  message: string;
+  outputDir: string;
+  files: CaseLibraryDownloadedFile[];
+  errors: string[];
+}
+
+/** Prefer .mph, then .zip / archives, then other downloads. */
+export function pickCaseDownloadFiles(item: CaseLibraryItem): CaseLibraryDownloadRequestFile[] {
+  const fromList = item.downloads
+    .filter((d) => d.url.trim())
+    .map((d) => ({
+      url: d.url.trim(),
+      filename: d.filename.trim() || undefined,
+    }));
+  const ranked = [...fromList].sort((a, b) => {
+    const score = (name: string, url: string) => {
+      const text = `${name} ${url}`.toLowerCase();
+      if (text.includes(".mph")) return 0;
+      if (text.includes(".zip") || text.includes(".mphbin")) return 1;
+      if (text.includes(".pdf")) return 3;
+      return 2;
+    };
+    return score(a.filename || "", a.url) - score(b.filename || "", b.url);
+  });
+  const mphOrZip = ranked.filter((d) => {
+    const text = `${d.filename || ""} ${d.url}`.toLowerCase();
+    return text.includes(".mph") || text.includes(".zip") || text.includes(".mphbin");
+  });
+  if (mphOrZip.length > 0) return mphOrZip;
+  if (ranked.length > 0) return ranked.slice(0, 1);
+  if (item.downloadUrl.trim()) {
+    return [{ url: item.downloadUrl.trim() }];
+  }
+  return [];
+}
+
+export async function downloadCaseLibraryFiles(options: {
+  outputDir: string;
+  files: CaseLibraryDownloadRequestFile[];
+}): Promise<CaseLibraryDownloadResult> {
+  try {
+    const res = await invoke<{
+      ok: boolean;
+      message: string;
+      output_dir?: string;
+      files?: Array<Record<string, unknown>>;
+      errors?: string[];
+    }>("bridge_send", {
+      cmd: "case_library_download",
+      payload: {
+        output_dir: options.outputDir,
+        files: options.files,
+      },
+    });
+    const files = Array.isArray(res.files)
+      ? res.files
+          .map((row) => ({
+            url: typeof row.url === "string" ? row.url : "",
+            filename: typeof row.filename === "string" ? row.filename : "",
+            path: typeof row.path === "string" ? row.path : "",
+            size: typeof row.size === "number" ? row.size : 0,
+          }))
+          .filter((row) => row.path)
+      : [];
+    return {
+      ok: res.ok,
+      message: res.message || "",
+      outputDir: typeof res.output_dir === "string" ? res.output_dir : options.outputDir,
+      files,
+      errors: Array.isArray(res.errors)
+        ? res.errors.filter((item): item is string => typeof item === "string")
+        : [],
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: String(error),
+      outputDir: options.outputDir,
+      files: [],
+      errors: [String(error)],
+    };
+  }
+}

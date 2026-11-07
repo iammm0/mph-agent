@@ -52,15 +52,29 @@ def get_default_output_dir() -> str:
     return str(get_project_root() / "models")
 
 
+# DeepSeek 已下线 deepseek-chat / deepseek-reasoner
+_LEGACY_DEEPSEEK_MODELS = {
+    "deepseek-chat": "deepseek-flash",
+    "deepseek-reasoner": "deepseek-flash",
+    "deepseek-v4-flash": "deepseek-flash",
+    "deepseek-v4-flash-vision-exp": "deepseek-flash",
+}
+
+
+def _normalize_deepseek_model(model: str) -> str:
+    name = (model or "").strip()
+    return _LEGACY_DEEPSEEK_MODELS.get(name, name) or "deepseek-flash"
+
+
 class Settings(BaseSettings):
     """应用配置"""
     
     # LLM 后端配置（仅支持: deepseek, kimi, ollama, openai-compatible）
     llm_backend: str = "ollama"
 
-    # DeepSeek API 配置（默认使用 reasoner，可选 deepseek-chat）
+    # DeepSeek API 配置（默认 flash；可选 deepseek-v4-pro）
     deepseek_api_key: str = ""
-    deepseek_model: str = "deepseek-reasoner"
+    deepseek_model: str = "deepseek-flash"
 
     # Kimi (Moonshot) API 配置
     kimi_api_key: str = ""
@@ -129,7 +143,7 @@ class Settings(BaseSettings):
     def get_model_for_backend(self, backend: str) -> str:
         """获取当前后端的模型名称。"""
         if backend == "deepseek":
-            return self.deepseek_model or "deepseek-reasoner"
+            return _normalize_deepseek_model(self.deepseek_model or "deepseek-flash")
         if backend == "kimi":
             return self.kimi_model or "moonshot-v1-8k"
         if backend == "openai-compatible":

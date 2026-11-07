@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Callable, Dict, Literal, Optional
 
 from agent.utils.logger import get_logger
 
@@ -10,6 +10,47 @@ logger = get_logger(__name__)
 
 _SUPPORTED_BACKENDS = ("deepseek", "kimi", "ollama", "openai-compatible")
 RuntimeBackend = Literal["deepseek", "kimi", "ollama", "openai-compatible"]
+UsageCallback = Callable[[Dict[str, Any]], None]
+
+
+def _estimate_tokens(text: str) -> int:
+    """粗估 token 数；优先用 clawcode tokenizer，失败则按字符近似。"""
+    raw = text or ""
+    if not raw:
+        return 0
+    try:
+        from agent.clawcode.tokenizer_runtime import count_tokens
+
+        return int(count_tokens(raw) or 0)
+    except Exception:
+        # 中英混合粗略：约 2 字符 / token
+        return max(1, (len(raw) + 1) // 2)
+
+
+def _usage_from_obj(usage: Any) -> Dict[str, int]:
+    if usage is None:
+        return {}
+    if isinstance(usage, dict):
+        prompt = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
+        completion = usage.get("completion_tokens") or usage.get("output_tokens") or 0
+        total = usage.get("total_tokens") or (int(prompt) + int(completion))
+        return {
+            "prompt_tokens": int(prompt or 0),
+            "completion_tokens": int(completion or 0),
+            "total_tokens": int(total or 0),
+        }
+    prompt = getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", None) or 0
+    completion = (
+        getattr(usage, "completion_tokens", None)
+        or getattr(usage, "output_tokens", None)
+        or 0
+    )
+    total = getattr(usage, "total_tokens", None) or (int(prompt) + int(completion))
+    return {
+        "prompt_tokens": int(prompt or 0),
+        "completion_tokens": int(completion or 0),
+        "total_tokens": int(total or 0),
+    }
 
 
 def _ensure_litellm():
@@ -82,6 +123,7 @@ class LLMClient:
         base_url: Optional[str] = None,
         ollama_url: Optional[str] = None,
         model: Optional[str] = None,
+        on_usage: Optional[UsageCallback] = None,
     ):
         if backend not in _SUPPORTED_BACKENDS:
             raise ValueError(
@@ -92,11 +134,21 @@ class LLMClient:
         self.api_key = (api_key or "").strip() or None
         self.base_url = (base_url or "").strip().rstrip("/") or None
         self.ollama_url = (ollama_url or base_url or "http://localhost:11434").rstrip("/")
+        self.on_usage = on_usage
+        self.last_usage: Dict[str, Any] = {}
+        self.cumulative_usage: Dict[str, int] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "calls": 0,
+        }
 
         if backend == "deepseek":
             if not self.api_key:
                 raise ValueError("使用 deepseek 后端需要提供 api_key")
-            self.default_model = model or "deepseek-reasoner"
+            from agent.utils.config import _normalize_deepseek_model
+
+            self.default_model = _normalize_deepseek_model(model or "deepseek-flash")
         elif backend == "kimi":
             if not self.api_key:
                 raise ValueError("使用 kimi 后端需要提供 api_key")
@@ -126,13 +178,21 @@ class LLMClient:
         temperature: float,
         stream: bool,
     ) -> dict[str, Any]:
+        use_model = model
+        if self.backend_type == "deepseek":
+            from agent.utils.config import _normalize_deepseek_model
+
+            use_model = _normalize_deepseek_model(model)
         kwargs: dict[str, Any] = {
-            "model": resolve_litellm_model(self.backend_type, model),
+            "model": resolve_litellm_model(self.backend_type, use_model),
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temperature,
             "stream": stream,
             "num_retries": 0,  # 外层已控制重试
         }
+        if stream and self.backend_type in ("deepseek", "kimi", "openai-compatible"):
+            # 让末包带回 usage（兼容 OpenAI / DeepSeek）
+            kwargs["stream_options"] = {"include_usage": True}
         if self.backend_type == "ollama":
             kwargs["api_base"] = self.ollama_url
         elif self.backend_type == "openai-compatible":
@@ -141,6 +201,52 @@ class LLMClient:
         else:
             kwargs["api_key"] = self.api_key
         return kwargs
+
+    def _record_usage(
+        self,
+        *,
+        prompt: str,
+        completion: str,
+        usage_obj: Any = None,
+        model: str = "",
+        source: str = "api",
+    ) -> Dict[str, Any]:
+        parsed = _usage_from_obj(usage_obj)
+        if not parsed or (parsed["prompt_tokens"] == 0 and parsed["completion_tokens"] == 0):
+            prompt_tokens = _estimate_tokens(prompt)
+            completion_tokens = _estimate_tokens(completion)
+            parsed = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+            }
+            source = "estimate"
+        payload: Dict[str, Any] = {
+            **parsed,
+            "model": model or self.default_model,
+            "backend": self.backend_type,
+            "source": source,
+            "cumulative_prompt_tokens": self.cumulative_usage["prompt_tokens"]
+            + parsed["prompt_tokens"],
+            "cumulative_completion_tokens": self.cumulative_usage["completion_tokens"]
+            + parsed["completion_tokens"],
+            "cumulative_total_tokens": self.cumulative_usage["total_tokens"]
+            + parsed["total_tokens"],
+            "calls": self.cumulative_usage["calls"] + 1,
+        }
+        self.last_usage = payload
+        self.cumulative_usage["prompt_tokens"] = int(payload["cumulative_prompt_tokens"])
+        self.cumulative_usage["completion_tokens"] = int(
+            payload["cumulative_completion_tokens"]
+        )
+        self.cumulative_usage["total_tokens"] = int(payload["cumulative_total_tokens"])
+        self.cumulative_usage["calls"] = int(payload["calls"])
+        if self.on_usage:
+            try:
+                self.on_usage(payload)
+            except Exception:
+                logger.debug("on_usage 回调失败", exc_info=True)
+        return payload
 
     def call(
         self,
@@ -166,6 +272,16 @@ class LLMClient:
                 text = _response_text(response)
                 if not text.strip():
                     raise ValueError("API 返回空响应")
+                usage = getattr(response, "usage", None)
+                if usage is None and isinstance(response, dict):
+                    usage = response.get("usage")
+                self._record_usage(
+                    prompt=prompt,
+                    completion=text,
+                    usage_obj=usage,
+                    model=use_model,
+                    source="api",
+                )
                 return text
             except Exception as e:
                 last_err = e
@@ -194,6 +310,7 @@ class LLMClient:
 
         for attempt in range(max_retries):
             full: list[str] = []
+            usage_obj: Any = None
             try:
                 stream = litellm.completion(
                     **self._completion_kwargs(
@@ -204,12 +321,24 @@ class LLMClient:
                     )
                 )
                 for chunk in stream:
+                    chunk_usage = getattr(chunk, "usage", None)
+                    if chunk_usage is None and isinstance(chunk, dict):
+                        chunk_usage = chunk.get("usage")
+                    if chunk_usage is not None:
+                        usage_obj = chunk_usage
                     text = _chunk_text(chunk)
                     if text:
                         full.append(text)
                         on_chunk(text)
                 result = "".join(full)
                 if result.strip():
+                    self._record_usage(
+                        prompt=prompt,
+                        completion=result,
+                        usage_obj=usage_obj,
+                        model=use_model,
+                        source="api" if usage_obj is not None else "estimate",
+                    )
                     return result
                 raise ValueError("流式响应为空")
             except Exception as e:
@@ -223,6 +352,13 @@ class LLMClient:
                     f" (已收到 {len(collected)} 字符)" if collected else "",
                 )
                 if collected.strip() and attempt > 0:
+                    self._record_usage(
+                        prompt=prompt,
+                        completion=collected,
+                        usage_obj=usage_obj,
+                        model=use_model,
+                        source="estimate",
+                    )
                     return collected
                 if attempt < max_retries - 1:
                     wait = min(2**attempt, 8)

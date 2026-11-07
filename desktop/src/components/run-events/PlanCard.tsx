@@ -20,7 +20,13 @@ export function PlanStartCard({ event: _event }: { event: RunEvent }) {
 /** 规划完成：展示模型名与步骤链 */
 export function PlanEndCard({ event }: { event: RunEvent }) {
   const d = event.data ?? {};
-  const steps = d.steps as Array<{ action?: string; step_type?: string }> | undefined;
+  const steps = d.steps as Array<{
+    action?: string;
+    step_type?: string;
+    label?: string;
+    why?: string;
+    inputs?: string[];
+  }> | undefined;
   const model = String(d.model_name ?? "").trim();
   const desc = d.plan_description as string | undefined;
   const structuredQuestions = normalizeClarifyingQuestions(d.clarifying_questions);
@@ -62,14 +68,29 @@ export function PlanEndCard({ event }: { event: RunEvent }) {
       <div className="run-event-card__main">
         <span className="run-event-card__title">规划完成</span>
         {model && <p className="run-event-card__model">{model}</p>}
+        {desc && (
+          <div className="run-event-card__plan-rationale">
+            <span className="run-event-card__kicker">推理思路</span>
+            <p className="run-event-card__desc">{desc}</p>
+          </div>
+        )}
         {steps?.length ? (
-          <ul className="run-event-card__steps">
+          <ol className="run-event-card__steps run-event-card__steps--detailed">
             {steps.map((s, i) => (
-              <li key={i}>{s.action ?? s.step_type ?? "步骤"}</li>
+              <li key={i}>
+                <strong>{s.label ?? s.action ?? s.step_type ?? "步骤"}</strong>
+                {s.why ? <p className="run-event-card__step-why">{s.why}</p> : null}
+                {Array.isArray(s.inputs) && s.inputs.length > 0 ? (
+                  <ul className="run-event-card__step-inputs">
+                    {s.inputs.map((input, j) => (
+                      <li key={j}>{input}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </li>
             ))}
-          </ul>
+          </ol>
         ) : null}
-        {desc && <p className="run-event-card__desc">{desc}</p>}
         {questions.length ? (
           <>
             <p className="run-event-card__detail">需要澄清</p>

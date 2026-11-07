@@ -17,7 +17,7 @@
 ```env
 LLM_BACKEND=deepseek
 DEEPSEEK_API_KEY=your_api_key
-DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_MODEL=deepseek-flash
 ```
 
 在 TUI 中可通过 **`/backend`** 选择后端；或通过 .env 设置默认后端。

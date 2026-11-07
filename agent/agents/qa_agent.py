@@ -28,6 +28,7 @@ class QAAgent(BaseAgent):
         base_url: Optional[str] = None,
         ollama_url: Optional[str] = None,
         model: Optional[str] = None,
+        on_usage: Optional[Callable] = None,
     ):
         super().__init__(system_prompt=system_prompt, history=history)
         settings = get_settings()
@@ -38,6 +39,7 @@ class QAAgent(BaseAgent):
             base_url=base_url or settings.get_base_url_for_backend(backend),
             ollama_url=ollama_url or settings.ollama_url,
             model=model or settings.get_model_for_backend(backend),
+            on_usage=on_usage,
         )
 
     def process(self, user_input: str, **kwargs: Any) -> str:

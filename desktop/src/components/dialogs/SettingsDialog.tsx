@@ -15,6 +15,7 @@ import {
 } from "../../lib/apiConfig";
 import type { BridgeResponse, MyComsolModel, SettingsSection } from "../../lib/types";
 import { CaseLibraryPage } from "../CaseLibraryPage";
+import { ModelPicker } from "../ModelPicker";
 import {
   clearCaseLibraryRecords,
   loadCaseLibraryRecords,
@@ -72,6 +73,7 @@ export function SettingsDialog({
     dispatch({ type: "SET_VIEW", view: "settings", settingsTab: tab });
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => loadApiConfig());
   const [llmStatus, setLlmStatus] = useState("");
+  const [llmStatusKind, setLlmStatusKind] = useState<"ok" | "err" | "">("");
   const [comsolStatus, setComsolStatus] = useState("");
   const [modelsList, setModelsList] = useState<MyComsolModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -118,12 +120,17 @@ export function SettingsDialog({
   );
 
   const saveAndSync = useCallback(
-    async (config: ApiConfig, section: "llm" | "comsol") => {
+    async (
+      config: ApiConfig,
+      section: "llm" | "comsol",
+      options?: { probeKey?: boolean }
+    ) => {
       saveApiConfig(config);
       const reloaded = loadApiConfig();
       setApiConfig(reloaded);
 
       const setStatus = section === "llm" ? setLlmStatus : setComsolStatus;
+      if (section === "llm") setLlmStatusKind("");
       setStatus("正在同步到后端...");
 
       try {
@@ -135,16 +142,64 @@ export function SettingsDialog({
           cmd: "config_save",
           payload: { config: env },
         });
-        if (res.ok) {
-          setStatus(section === "llm" ? "已保存" : `已保存：${res.message}`);
-        } else {
+        if (!res.ok) {
+          if (section === "llm") setLlmStatusKind("err");
           setStatus(res.message);
+          window.setTimeout(() => {
+            setStatus("");
+            if (section === "llm") setLlmStatusKind("");
+          }, 8000);
+          return;
+        }
+
+        if (section !== "llm" || !options?.probeKey) {
+          setStatus(section === "llm" ? "已保存" : `已保存：${res.message}`);
+          window.setTimeout(() => setStatus(""), 6500);
+          return;
+        }
+
+        const apiKey = getProviderConfig(reloaded, ACTIVE_PROVIDER_ID).api_key.trim();
+        if (!apiKey) {
+          setLlmStatusKind("err");
+          setStatus("已保存，但未填写 API 密钥，无法探测");
+          window.setTimeout(() => {
+            setStatus("");
+            setLlmStatusKind("");
+          }, 8000);
+          return;
+        }
+
+        setStatus("已保存，正在探测密钥…");
+        const probe = await invoke<{
+          ok: boolean;
+          message: string;
+          models?: string[];
+        }>("bridge_send", {
+          cmd: "deepseek_models",
+          payload: { api_key: apiKey },
+        });
+        const models = (probe.models ?? []).filter((item) => item.trim());
+        if (probe.ok && models.length > 0) {
+          setLlmStatusKind("ok");
+          setStatus(`密钥可用 · ${probe.message}：${models.join("、")}`);
+        } else {
+          setLlmStatusKind("err");
+          const message = probe.message || "未探测到模型";
+          setStatus(
+            message.includes("未知命令")
+              ? "已保存，但探测命令尚未加载，请重启桌面端后再试"
+              : `密钥不可用 · ${message}`
+          );
         }
       } catch (error) {
+        if (section === "llm") setLlmStatusKind("err");
         setStatus(`同步失败：${String(error)}`);
       }
 
-      window.setTimeout(() => setStatus(""), 6500);
+      window.setTimeout(() => {
+        setStatus("");
+        if (section === "llm") setLlmStatusKind("");
+      }, 10000);
     },
     [state.workspaceDir]
   );
@@ -178,7 +233,7 @@ export function SettingsDialog({
     saveApiConfig(nextConfig);
     setApiConfig(nextConfig);
     dispatch({ type: "SET_BACKEND", backend: ACTIVE_PROVIDER_ID });
-    void saveAndSync(nextConfig, "llm");
+    void saveAndSync(nextConfig, "llm", { probeKey: true });
   }, [apiConfig, dispatch, saveAndSync]);
 
   const pickWorkspaceDir = useCallback(async () => {
@@ -263,9 +318,6 @@ export function SettingsDialog({
   return (
     <div className={`settings-dialog ${pageMode ? "settings-dialog--page" : ""}`}>
       <header className="settings-dialog-header">
-        <div>
-          <h2 className="settings-dialog-title">设置中心</h2>
-        </div>
         {pageMode ? (
           <button
             type="button"
@@ -273,19 +325,22 @@ export function SettingsDialog({
             onClick={() => dispatch({ type: "SET_VIEW", view: "session" })}
           >
             <Icon name="arrow-left-01" size={15} />
-            返回对话
+            返回应用
           </button>
         ) : (
-          onClose && (
-            <button
-              type="button"
-              className="settings-dialog-close"
-              onClick={onClose}
-              aria-label="关闭"
-            >
-              <Icon name="close-circle" size={16} />
-            </button>
-          )
+          <>
+            <h2 className="settings-dialog-title">设置</h2>
+            {onClose && (
+              <button
+                type="button"
+                className="settings-dialog-close"
+                onClick={onClose}
+                aria-label="关闭"
+              >
+                <Icon name="close-circle" size={16} />
+              </button>
+            )}
+          </>
         )}
       </header>
       <div className="settings-dialog-body">
@@ -385,17 +440,30 @@ export function SettingsDialog({
           {activeTab === "llm" && (
             <div className="settings-card settings-model-form">
               <div className="settings-field">
-                <label htmlFor="settings-model-name">模型</label>
-                <input
-                  id="settings-model-name"
-                  type="text"
-                  className="dialog-input settings-api-input"
-                  placeholder={selectedProviderMeta.defaultModel}
-                  value={selectedProviderConfig.model}
-                  onChange={(event) =>
-                    updateProviderField(selectedProviderId, "model", event.target.value)
-                  }
+                <label>模型</label>
+                <ModelPicker
+                  variant="field"
+                  apiKey={selectedProviderConfig.api_key}
+                  model={selectedProviderConfig.model || selectedProviderMeta.defaultModel}
+                  onSelect={(model) => {
+                    const next = {
+                      ...apiConfig,
+                      preferred_backend: ACTIVE_PROVIDER_ID,
+                      providers: {
+                        ...apiConfig.providers,
+                        [selectedProviderId]: {
+                          ...selectedProviderConfig,
+                          model,
+                        },
+                      },
+                    };
+                    setApiConfig(next);
+                    void saveAndSync(next, "llm");
+                  }}
                 />
+                <p className="settings-field-note">
+                  打开列表会向 DeepSeek 探测可用模型。对话输入框里也可以直接切换。
+                </p>
               </div>
 
               <div className="settings-field">
@@ -418,9 +486,21 @@ export function SettingsDialog({
 
               <div className="settings-model-actions">
                 <button type="button" className="dialog-btn primary" onClick={saveConfig}>
-                  保存
+                  保存并探测
                 </button>
-                {llmStatus && <span className="settings-status">{llmStatus}</span>}
+                {llmStatus && (
+                  <span
+                    className={`settings-status${
+                      llmStatusKind === "ok"
+                        ? " settings-status-ok"
+                        : llmStatusKind === "err"
+                          ? " settings-status-err"
+                          : ""
+                    }`}
+                  >
+                    {llmStatus}
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -604,9 +684,17 @@ export function SettingsDialog({
                         <button
                           type="button"
                           className="dialog-btn secondary"
-                          onClick={() => openNativePath(record.downloadUrl)}
+                          onClick={() =>
+                            openNativePath(
+                              record.localDir ||
+                                record.localPaths?.[0] ||
+                                record.downloadUrl
+                            )
+                          }
                         >
-                          再次下载
+                          {record.localDir || record.localPaths?.[0]
+                            ? "打开本地"
+                            : "打开下载链接"}
                         </button>
                         <button
                           type="button"

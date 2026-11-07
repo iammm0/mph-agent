@@ -276,7 +276,7 @@ def do_run(
     base_url: Optional[str] = None,
     ollama_url: Optional[str] = None,
     model: Optional[str] = None,
-    max_iterations: int = 10,
+    max_iterations: Optional[int] = None,
     skip_check: bool = False,
     verbose: bool = False,
     event_bus: Optional[EventBus] = None,
@@ -666,7 +666,8 @@ DISCUSS_CHITCHAT_PROMPT = (
 )
 
 DISCUSS_TOPIC_PROMPT = (
-    "你是 COMSOL Multiphysics 相关的助手。用户正在 Discuss 模式里梳理建模需求；"
+    "你是 COMSOL Multiphysics 相关的助手。你的最基础任务：无论什么样的建模需求，都必须想办法闭环，产出可求解可计算的 COMSOL 模型——这是你的唯一使命。"
+    "用户正在 Discuss 模式里梳理建模需求；"
     "系统会在后台维护结构化讨论要点（用户看不到内部字段名）。\n"
     "下面「内部摘要」仅供你参考，请用自然对话回复：回应用户输入，信息不足时温和追问 1～2 个关键点。\n"
     "语气像在讨论方案，不要像打印状态报告。\n"
@@ -694,6 +695,14 @@ def _discuss_llm_reply(
             f"{system_prompt}\n\n"
             f"【会话记忆】\n{memory_context.strip()}\n"
         )
+    def _on_usage(usage: Dict[str, Any]) -> None:
+        if event_bus is None:
+            return
+        try:
+            event_bus.emit_type(EventType.TOKEN_USAGE, usage)
+        except Exception:
+            pass
+
     qa = QAAgent(
         system_prompt=final_system_prompt,
         backend=backend,
@@ -701,6 +710,7 @@ def _discuss_llm_reply(
         base_url=base_url,
         ollama_url=ollama_url,
         model=model,
+        on_usage=_on_usage,
     )
     if event_bus is None:
         return qa.process(user_text)
@@ -1272,6 +1282,143 @@ def do_case_library_sync(
     return True, "案例库同步已启动", _case_library_sync_state_copy()
 
 
+def _guess_download_filename(url: str, content_disposition: str = "", fallback: str = "") -> str:
+    import re
+    from urllib.parse import unquote, urlparse
+
+    cd = (content_disposition or "").strip()
+    if cd:
+        match = re.search(r'filename\*=UTF-8\'\'([^;]+)|filename="?([^";]+)"?', cd, re.I)
+        if match:
+            raw = match.group(1) or match.group(2) or ""
+            name = unquote(raw).strip().replace("\\", "_").replace("/", "_")
+            if name:
+                return name
+    path_name = Path(unquote(urlparse(url).path)).name
+    if path_name and path_name not in (".", "/"):
+        return path_name
+    cleaned = (fallback or "case_download").strip().replace("\\", "_").replace("/", "_")
+    return cleaned or "case_download.bin"
+
+
+def do_case_library_download(
+    output_dir: str,
+    files: Optional[List[Dict[str, Any]]] = None,
+    url: Optional[str] = None,
+    filename: Optional[str] = None,
+    verbose: bool = False,
+) -> Tuple[bool, str, Dict[str, Any]]:
+    """Download official case files into a local directory for later parse."""
+    _ensure_logging(verbose)
+    target = Path((output_dir or "").strip()).expanduser()
+    if not str(target):
+        return False, "请先选择下载目录", {"files": []}
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        return False, f"无法创建下载目录: {e}", {"files": [], "output_dir": str(target)}
+
+    jobs: List[Dict[str, str]] = []
+    for item in files or []:
+        if not isinstance(item, dict):
+            continue
+        item_url = str(item.get("url") or "").strip()
+        if not item_url:
+            continue
+        jobs.append(
+            {
+                "url": item_url,
+                "filename": str(item.get("filename") or "").strip(),
+            }
+        )
+    single = (url or "").strip()
+    if single:
+        jobs.append({"url": single, "filename": (filename or "").strip()})
+
+    # de-dupe by URL
+    seen = set()
+    unique_jobs: List[Dict[str, str]] = []
+    for job in jobs:
+        if job["url"] in seen:
+            continue
+        seen.add(job["url"])
+        unique_jobs.append(job)
+    if not unique_jobs:
+        return False, "没有可下载的文件链接", {"files": [], "output_dir": str(target)}
+
+    try:
+        import requests
+    except ImportError:
+        return False, "缺少 requests，无法下载案例文件", {"files": [], "output_dir": str(target)}
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/122.0.0.0 Safari/537.36"
+        ),
+        "Accept": "*/*",
+    }
+    saved: List[Dict[str, Any]] = []
+    errors: List[str] = []
+
+    for job in unique_jobs:
+        job_url = job["url"]
+        try:
+            with requests.get(job_url, headers=headers, stream=True, timeout=120, allow_redirects=True) as resp:
+                if resp.status_code >= 400:
+                    errors.append(f"{job_url} -> HTTP {resp.status_code}")
+                    continue
+                content_type = (resp.headers.get("Content-Type") or "").lower()
+                if "text/html" in content_type:
+                    errors.append(f"{job_url} -> 返回了网页（可能需要登录），未能直接下载")
+                    continue
+                name = _guess_download_filename(
+                    job_url,
+                    resp.headers.get("Content-Disposition", ""),
+                    job.get("filename") or "",
+                )
+                dest = target / name
+                # avoid overwrite collisions
+                if dest.exists():
+                    stem, suffix = dest.stem, dest.suffix
+                    i = 1
+                    while True:
+                        candidate = target / f"{stem}_{i}{suffix}"
+                        if not candidate.exists():
+                            dest = candidate
+                            break
+                        i += 1
+                with dest.open("wb") as fh:
+                    for chunk in resp.iter_content(chunk_size=1024 * 256):
+                        if chunk:
+                            fh.write(chunk)
+                saved.append(
+                    {
+                        "url": job_url,
+                        "filename": dest.name,
+                        "path": str(dest.resolve()),
+                        "size": dest.stat().st_size,
+                    }
+                )
+        except Exception as e:
+            logger.exception("case library download failed: %s", job_url)
+            errors.append(f"{job_url} -> {e}")
+
+    payload = {
+        "output_dir": str(target.resolve()),
+        "files": saved,
+        "errors": errors,
+    }
+    if not saved:
+        detail = "；".join(errors[:3]) if errors else "未知错误"
+        return False, f"下载失败：{detail}", payload
+    msg = f"已下载 {len(saved)} 个文件到 {target}"
+    if errors:
+        msg += f"（另有 {len(errors)} 个失败）"
+    return True, msg, payload
+
+
 def do_doc_kb_status(verbose: bool = False) -> Tuple[bool, str, Dict[str, Any]]:
     """Return current local COMSOL documentation KB state for the desktop UI."""
 
@@ -1623,6 +1770,60 @@ def do_context_set_summary(conversation_id: Optional[str], text: str) -> Tuple[b
     cm = get_context_manager(conversation_id)
     cm.set_summary_text(text)
     return True, "记忆已保存"
+
+
+def do_list_deepseek_models(api_key: Optional[str] = None) -> Tuple[bool, str, list[str]]:
+    """向 DeepSeek /models 探测当前密钥可用的模型 id。"""
+    key = (api_key or "").strip()
+    if not key:
+        return False, "请先在设置中填写 DeepSeek API 密钥", []
+    try:
+        import requests
+
+        response = requests.get(
+            "https://api.deepseek.com/models",
+            headers={"Authorization": f"Bearer {key}"},
+            timeout=15,
+        )
+    except Exception as exc:
+        return False, f"探测失败: {exc}", []
+    if response.status_code != 200:
+        detail = ""
+        try:
+            body = response.json()
+            if isinstance(body, dict):
+                err = body.get("error")
+                if isinstance(err, dict):
+                    detail = str(err.get("message") or "")
+                elif isinstance(err, str):
+                    detail = err
+        except Exception:
+            detail = (response.text or "")[:180]
+        suffix = f"：{detail}" if detail else ""
+        return False, f"探测失败: HTTP {response.status_code}{suffix}", []
+    try:
+        payload = response.json()
+    except Exception:
+        return False, "探测失败: 返回不是 JSON", []
+    raw_items = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(raw_items, list):
+        return False, "探测失败: 响应中没有模型列表", []
+    seen: set[str] = set()
+    models: list[str] = []
+    for item in raw_items:
+        model_id = ""
+        if isinstance(item, dict):
+            model_id = str(item.get("id") or "").strip()
+        elif isinstance(item, str):
+            model_id = item.strip()
+        if model_id and model_id not in seen:
+            seen.add(model_id)
+            models.append(model_id)
+    if not models:
+        return False, "未探测到可用模型", []
+    preferred = ["deepseek-flash", "deepseek-v4-pro"]
+    models.sort(key=lambda name: (preferred.index(name) if name in preferred else len(preferred), name))
+    return True, f"已探测到 {len(models)} 个模型", models
 
 
 def do_ollama_ping(ollama_url: str) -> Tuple[bool, str]:

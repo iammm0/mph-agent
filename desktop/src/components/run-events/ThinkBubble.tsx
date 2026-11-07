@@ -36,13 +36,36 @@ export function ThinkBubble({
 
   const thought = d.thought as Record<string, unknown> | undefined;
   if (!thought) return null;
-  const action = thought.action as string | undefined;
+  const action = (thought.label as string | undefined) || (thought.action as string | undefined);
   const reasoning = thought.reasoning as string | undefined;
+  const basis = thought.basis as string | undefined;
+  const progress = thought.progress as string | undefined;
+  const highlights = Array.isArray(thought.input_highlights)
+    ? thought.input_highlights.map((item) => String(item ?? "").trim()).filter(Boolean)
+    : [];
 
   return (
     <div className="run-event-bubble run-event-bubble--think">
-      {action && <div className="run-event-bubble__action">{action}</div>}
+      {(action || progress) && (
+        <div className="run-event-bubble__action">
+          {progress ? `${progress} · ` : ""}
+          {action}
+        </div>
+      )}
       {reasoning && <div className="run-event-bubble__content">{reasoning}</div>}
+      {basis && (
+        <div className="run-event-bubble__basis">
+          <span className="run-event-bubble__basis-label">依据</span>
+          {basis}
+        </div>
+      )}
+      {highlights.length > 0 && (
+        <ul className="run-event-bubble__inputs">
+          {highlights.map((item, i) => (
+            <li key={i}>{item}</li>
+          ))}
+        </ul>
+      )}
       {!action && !reasoning && (
         <div className="run-event-bubble__content">{JSON.stringify(thought).slice(0, 200)}</div>
       )}

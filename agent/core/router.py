@@ -1,5 +1,5 @@
 """路由：根据用户输入决定走 Q&A 还是技术/执行流（Planner → Core → Summary）。
-使用 DeepSeek deepseek-chat 模型做意图分类；若未配置或调用失败则回退到关键字规则。"""
+使用 DeepSeek deepseek-flash 模型做意图分类；若未配置或调用失败则回退到关键字规则。"""
 from typing import Literal
 
 RouteResult = Literal["qa", "technical"]
@@ -35,7 +35,7 @@ def _route_by_keywords(user_input: str) -> RouteResult:
 
 
 def _route_by_deepseek(user_input: str) -> RouteResult:
-    """使用 DeepSeek deepseek-chat 做意图分类。"""
+    """使用 DeepSeek deepseek-flash 做意图分类。"""
     try:
         from agent.utils.config import get_settings
         from agent.utils.llm import LLMClient
@@ -52,7 +52,7 @@ def _route_by_deepseek(user_input: str) -> RouteResult:
         prompt = f"{_ROUTE_PROMPT}\n\n用户输入：\n{user_input}"
         reply = client.call(
             prompt,
-            model="deepseek-chat",
+            model="deepseek-flash",
             temperature=0,
             max_retries=1,
         )
@@ -72,7 +72,7 @@ def _route_by_deepseek(user_input: str) -> RouteResult:
 def route(user_input: str) -> RouteResult:
     """
     根据用户输入返回 "qa" 或 "technical"。
-    优先使用 DeepSeek deepseek-chat 做意图判断；未配置或失败时使用关键字规则。
+    优先使用 DeepSeek deepseek-flash 做意图判断；未配置或失败时使用关键字规则。
     """
     if not (user_input or "").strip():
         return "qa"

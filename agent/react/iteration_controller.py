@@ -42,18 +42,12 @@ class IterationController:
         """
         self.llm = llm
         self.error_collector = error_collector
-        self.max_iterations = 10
+        self.last_adjust_summary: str = ""
 
     def should_iterate(self, plan: ReActTaskPlan, observation: Observation) -> bool:
         """
-        判断是否需要迭代
-
-        Args:
-            plan: 任务计划
-            observation: 观察结果
-
-        Returns:
-            是否需要迭代
+        判断是否需要迭代（无最大调整次数上限；以最终可求解为目标持续调整，
+        仅在步骤全部完成或控制器判定致命/无效迭代时停止）。
         """
         # 如果观察结果是错误，需要迭代
         if observation.status == "error":
@@ -74,11 +68,6 @@ class IterationController:
         failed_steps = [step for step in plan.execution_path if step.status == "failed"]
         if failed_steps:
             return True
-
-        # 如果迭代次数过多，不再迭代
-        if len(plan.iterations) >= self.max_iterations:
-            logger.warning("已达到最大调整次数: %s", self.max_iterations)
-            return False
 
         return False
 
@@ -140,6 +129,10 @@ class IterationController:
             plan.execution_path[i].status = "pending"
             plan.execution_path[i].result = None
         plan.current_step_index = target_index
+        self.last_adjust_summary = (
+            f"错误归因到 {agent_type}，已回退到第 {target_index + 1} 步并准备重跑后续流程。"
+            f"观察依据：{(observation.message or '')[:180]}"
+        )
         logger.info("已回退到步骤 %s (agent_type=%s)", target_index + 1, agent_type)
         return plan
 
@@ -195,6 +188,7 @@ class IterationController:
             更新后的计划
         """
         logger.info("更新任务计划...")
+        self.last_adjust_summary = ""
 
         # 生成反馈
         feedback = self.generate_feedback(plan, observation)
@@ -272,6 +266,9 @@ class IterationController:
             current_step.parameters["save_to_new_path"] = True
             current_step.status = "pending"
             current_step.result = None
+            self.last_adjust_summary = (
+                "检测到模型文件被占用，改为保存到新路径后重试当前步骤。"
+            )
             logger.info("检测到文件占用错误，已标记保存到新路径并重新执行步骤: %s", current_step.step_id)
             return plan
 
@@ -499,6 +496,8 @@ class IterationController:
             prompt = f"""
 当前 COMSOL 建模任务执行遇到问题，请根据观察到的错误信息重新规划，给出具体、可执行的调整方案（不要只复述用户需求或笼统描述）。
 
+唯一使命：无论遇到什么障碍，都必须想办法闭环——产出可求解、可计算的 COMSOL 模型；缺属性就补齐，特征 ID 错误就改成官方可用特征，宁可简化也要算通。
+
 【错误/观察信息】
 {err_msg}
 
@@ -559,7 +558,10 @@ class IterationController:
                                 step.status = "pending"
                                 break
 
-                logger.info("计划已根据错误信息更新: %s", suggestions.get("suggested_changes", ""))
+                summary = str(suggestions.get("suggested_changes") or "").strip()
+                if summary:
+                    self.last_adjust_summary = summary
+                logger.info("计划已根据错误信息更新: %s", summary)
 
         except Exception as e:
             logger.warning(f"LLM 改进计划失败: {e}")

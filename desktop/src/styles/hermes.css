@@ -380,8 +380,11 @@ body {
 /* -------- 6. 对话框:直角描边卡片 ----------------------------------------- */
 
 .dialog-overlay {
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
     background: rgba(8, 18, 13, 0.65);
-    backdrop-filter: blur(2px);
+    backdrop-filter: blur(6px);
 }
 
 .dialog-box {

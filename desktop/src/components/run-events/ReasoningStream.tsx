@@ -247,7 +247,11 @@ export function groupEventsByPhase(events: RunEvent[]): PhaseBlock[] {
 
 function visiblePhaseEvents(events: RunEvent[]): RunEvent[] {
   const filtered = events.filter(
-    (evt) => evt.type !== "token_budget" && evt.type !== "plan_runtime_sync"
+    (evt) =>
+      evt.type !== "token_budget" &&
+      evt.type !== "token_usage" &&
+      evt.type !== "next_actions" &&
+      evt.type !== "plan_runtime_sync"
   );
   return mergeCapabilityScan(filtered);
 }
@@ -305,6 +309,10 @@ function eventOneLine(event: RunEvent): string {
       return "能力扫描";
     case "observation":
       return String(d.message ?? "观察").slice(0, 80);
+    case "decision":
+      return String(d.title ?? d.reasoning ?? "决策依据").slice(0, 80);
+    case "modeling_process":
+      return String(d.title ?? "建模细致过程").slice(0, 80);
     case "error":
       return String(d.message ?? "错误").slice(0, 80);
     case "content":

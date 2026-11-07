@@ -1,22 +1,118 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { BrandLockup } from "./Logo";
 import { Icon } from "./Icon";
 
 const WIN_CONTROL_CLASS = "titlebar-win-control";
 
-export function TitleBar() {
+/** Windows 风格：单方框 = 最大化；重叠方框 = 还原（不再用向外展开的 maximize-3） */
+function MaximizeGlyph({ restored }: { restored: boolean }) {
+  if (restored) {
+    return (
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 12 12"
+        aria-hidden="true"
+        className="titlebar-win-glyph"
+      >
+        <rect
+          x="3.5"
+          y="1.5"
+          width="7"
+          height="7"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.2"
+        />
+        <rect
+          x="1.5"
+          y="3.5"
+          width="7"
+          height="7"
+          fill="var(--bg-panel, #fff)"
+          stroke="currentColor"
+          strokeWidth="1.2"
+        />
+      </svg>
+    );
+  }
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+      className="titlebar-win-glyph"
+    >
+      <rect
+        x="2"
+        y="2"
+        width="8"
+        height="8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+    </svg>
+  );
+}
 
-  const handleMinimize = useCallback(() => {
-    getCurrentWindow().minimize();
+export function TitleBar() {
+  const [maximized, setMaximized] = useState(false);
+
+  const syncMaximized = useCallback(async () => {
+    try {
+      setMaximized(await getCurrentWindow().isMaximized());
+    } catch {
+      // ignore
+    }
   }, []);
 
-  const handleToggleMaximize = useCallback(() => {
-    getCurrentWindow().toggleMaximize();
+  useEffect(() => {
+    const win = getCurrentWindow();
+    const unsubs: Array<() => void> = [];
+
+    void syncMaximized();
+
+    void win
+      .onResized(() => {
+        void syncMaximized();
+      })
+      .then((fn) => unsubs.push(fn))
+      .catch(() => {});
+
+    void win
+      .onMoved(() => {
+        void syncMaximized();
+      })
+      .then((fn) => unsubs.push(fn))
+      .catch(() => {});
+
+    return () => {
+      for (const unsub of unsubs) unsub();
+    };
+  }, [syncMaximized]);
+
+  const handleMinimize = useCallback(() => {
+    void getCurrentWindow().minimize();
+  }, []);
+
+  const handleToggleMaximize = useCallback(async () => {
+    const win = getCurrentWindow();
+    setMaximized((prev) => !prev);
+    try {
+      await win.toggleMaximize();
+    } catch {
+      // ignore
+    }
+    window.setTimeout(() => {
+      void win.isMaximized().then(setMaximized).catch(() => {});
+    }, 80);
   }, []);
 
   const handleClose = useCallback(() => {
-    getCurrentWindow().close();
+    void getCurrentWindow().close();
   }, []);
 
   return (
@@ -37,11 +133,11 @@ export function TitleBar() {
         <button
           type="button"
           className={WIN_CONTROL_CLASS}
-          onClick={handleToggleMaximize}
-          title="最大化 / 还原"
-          aria-label="最大化"
+          onClick={() => void handleToggleMaximize()}
+          title={maximized ? "还原" : "最大化"}
+          aria-label={maximized ? "还原" : "最大化"}
         >
-          <Icon name="maximize-3" size={14} />
+          <MaximizeGlyph restored={maximized} />
         </button>
         <button
           type="button"

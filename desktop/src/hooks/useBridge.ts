@@ -255,10 +255,22 @@ export function useBridge() {
       const line = raw.trim();
       if (!line || !cid) return;
 
+      const resumeFrom = state.editResumeFromIndex;
+      if (resumeFrom != null) {
+        dispatch({
+          type: "REMOVE_MESSAGES_FROM_INDEX",
+          conversationId: cid,
+          fromIndex: resumeFrom,
+        });
+        dispatch({ type: "CLEAR_EDIT_RESUME" });
+      }
+
       addMessage("user", line);
       dispatch({ type: "SET_LAST_PLAN_INPUT", input: line });
 
-      const userCount = messages.filter((m) => m.role === "user").length;
+      const baseMessages =
+        resumeFrom != null ? messages.slice(0, resumeFrom) : messages;
+      const userCount = baseMessages.filter((m) => m.role === "user").length + 1;
       void (async () => {
         const apiPayload = getPayloadFromConfig(state.backend, loadApiConfig());
 
@@ -302,6 +314,7 @@ export function useBridge() {
       state.outputDefault,
       state.workspaceDir,
       state.backend,
+      state.editResumeFromIndex,
       messages,
       dispatch,
       addMessage,

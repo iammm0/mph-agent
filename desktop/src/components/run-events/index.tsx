@@ -10,8 +10,11 @@ import { ObservationCallout } from "./ObservationCallout";
 import { ErrorAlert } from "./ErrorAlert";
 import { ContentBlock } from "./ContentBlock";
 import { TokenBudgetCard } from "./TokenBudgetCard";
+import { TokenUsageBadge } from "./TokenUsageBadge";
 import { PlanRuntimeSyncCard } from "./PlanRuntimeSyncCard";
 import { CapabilityScanCard } from "./CapabilityScanCard";
+import { DecisionCard } from "./DecisionCard";
+import { ModelingProcessCard } from "./ModelingProcessCard";
 
 /** 按事件类型选择对应展示组件，突出不同类型信息的重点 */
 export function RunEventBlock({
@@ -53,6 +56,14 @@ export function RunEventBlock({
       return <FeatureBadge event={event} />;
     case "token_budget":
       return <TokenBudgetCard event={event} />;
+    case "token_usage":
+      return <TokenUsageBadge event={event} />;
+    case "decision":
+      return <DecisionCard event={event} />;
+    case "modeling_process":
+      return <ModelingProcessCard event={event} />;
+    case "next_actions":
+      return null;
     case "plan_runtime_sync":
       return <PlanRuntimeSyncCard event={event} />;
     case "capability_scan": {

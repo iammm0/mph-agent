@@ -3,6 +3,7 @@ import type { ChatMessage } from "../lib/types";
 import { ReasoningStream } from "./run-events/ReasoningStream";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppState } from "../context/AppStateContext";
+import { useBridge } from "../hooks/useBridge";
 import type { RunEvent } from "../lib/types";
 import { MarkdownContent } from "./MarkdownContent";
 import { sanitizeLLMDisplayText } from "../lib/textSanitizer";
@@ -14,6 +15,10 @@ import {
 } from "../lib/parseDoctorReport";
 import { DoctorDiagnosisCard } from "./DoctorDiagnosisCard";
 import { ReasoningLivePlaceholder } from "./ReasoningLivePlaceholder";
+import {
+  extractNextActionsFromEvents,
+  NextActionsCard,
+} from "./run-events/NextActionsCard";
 
 /** 合并连续的 llm_stream_chunk 为单条，便于展示完整思维过程 */
 function mergeStreamChunks(events: RunEvent[]): RunEvent[] {
@@ -125,6 +130,7 @@ function openPreviewMd(modelPath: string) {
 
 export function AssistantMessage({ message }: { message: ChatMessage }) {
   const { state } = useAppState();
+  const { handleSubmit } = useBridge();
   const hasEvents = (message.events?.length ?? 0) > 0;
   const isError = message.success === false;
   const isCurrentBusy = state.busyConversationId === state.currentConversationId;
@@ -161,6 +167,11 @@ export function AssistantMessage({ message }: { message: ChatMessage }) {
   const placeholderText = renderText || (isCurrentBusy ? phaseLabel : "") || "—";
   const showReasoningPanel =
     hasEvents || (isCurrentBusy && !showDoctorUi && !isError);
+  const nextActions = useMemo(
+    () => extractNextActionsFromEvents(message.events),
+    [message.events]
+  );
+  const showNextActions = Boolean(nextActions && !isCurrentBusy);
 
   return (
     <div className={`assistant-msg${isCurrentBusy ? " assistant-msg--busy" : ""}`}>
@@ -262,6 +273,15 @@ export function AssistantMessage({ message }: { message: ChatMessage }) {
         <div className="assistant-msg-body success assistant-msg-body--case">
           <CaseAnalysisCard caseData={caseData} savedPath={message.caseSavedPath} />
         </div>
+      )}
+      {showNextActions && nextActions && (
+        <NextActionsCard
+          title={nextActions.title}
+          hint={nextActions.hint}
+          actions={nextActions.actions}
+          disabled={state.busyConversationId != null}
+          onSend={(prompt) => handleSubmit(prompt)}
+        />
       )}
     </div>
   );

@@ -30,6 +30,7 @@ try:
         do_discuss,
         do_case,
         do_case_library_list,
+        do_case_library_download,
         do_case_library_sync,
         do_case_library_sync_status,
         do_doc_kb_import,
@@ -51,6 +52,7 @@ try:
         do_context_stats,
         do_context_clear,
         do_ollama_ping,
+        do_list_deepseek_models,
         do_config_save,
         do_conversation_title_suggest,
     )
@@ -357,6 +359,26 @@ def _handle(req: dict[str, Any]) -> None:
             _reply(ok, msg, sync=state)
             return
 
+        if cmd == "case_library_download":
+            files = req.get("files")
+            if not isinstance(files, list):
+                files = None
+            ok, msg, result = do_case_library_download(
+                output_dir=(req.get("output_dir") or "").strip(),
+                files=files,
+                url=(req.get("url") or "").strip() or None,
+                filename=(req.get("filename") or "").strip() or None,
+                verbose=req.get("verbose", False),
+            )
+            _reply(
+                ok,
+                msg,
+                output_dir=result.get("output_dir"),
+                files=result.get("files", []),
+                errors=result.get("errors", []),
+            )
+            return
+
         if cmd == "doc_kb_import":
             def _int(name: str, default: int) -> int:
                 try:
@@ -523,6 +545,11 @@ def _handle(req: dict[str, Any]) -> None:
                 text=text,
             )
             _reply(ok, msg)
+            return
+
+        if cmd == "deepseek_models":
+            ok, msg, models = do_list_deepseek_models(req.get("api_key") or None)
+            _reply(ok, msg, models=models)
             return
 
         if cmd == "ollama_ping":

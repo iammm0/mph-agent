@@ -32,7 +32,7 @@ export function ConfirmDialog({
       <div className="dialog-body confirm-dialog-body">
         <p className="confirm-dialog-message">{message}</p>
       </div>
-      <div className="dialog-actions confirm-dialog-actions">
+      <div className="dialog-footer confirm-dialog-actions">
         <button type="button" className="dialog-btn secondary" onClick={onCancel}>
           {cancelLabel}
         </button>

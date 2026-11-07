@@ -18,6 +18,87 @@ from agent.schemas.task import ClarifyingAnswer, ExecutionStep, Observation, ReA
 
 logger = get_logger(__name__)
 
+_STEP_LABELS = {
+    "create_geometry": "几何建模",
+    "define_globals": "全局参数",
+    "add_material": "材料设置",
+    "update_material_property": "材料属性修补",
+    "add_physics": "物理场与边界",
+    "generate_mesh": "网格划分",
+    "configure_study": "研究配置",
+    "solve": "求解",
+    "export_results": "结果导出",
+    "import_geometry": "导入几何",
+    "create_selection": "创建选择集",
+    "call_official_api": "官方 API 细控",
+}
+
+_STEP_WHY = {
+    "create_geometry": "几何是材料、物理场与网格的载体，必须先闭环几何。",
+    "define_globals": "把尺寸/载荷等写成全局参数，便于后续复现与调参。",
+    "add_material": "物理场求解依赖完整材料属性（如 E/nu/k），缺属性无法可算。",
+    "update_material_property": "在已有材料上补齐缺失属性，避免整树重建。",
+    "add_physics": "定义控制方程与边界/载荷，决定模型是否可求解。",
+    "generate_mesh": "离散化几何是数值求解的前提。",
+    "configure_study": "选择稳态/瞬态等研究类型并装配求解器。",
+    "solve": "执行求解以验证模型可计算，这是闭环的最终目标。",
+    "export_results": "把可交付结果图/数据落盘，便于验收。",
+    "import_geometry": "复用外部 CAD/几何文件以缩短建模路径。",
+    "create_selection": "为边界/域操作建立可引用选择集。",
+    "call_official_api": "用官方 Java API 做细粒度节点控制。",
+}
+
+
+def _param_highlights(parameters: Optional[Dict[str, Any]]) -> List[str]:
+    if not isinstance(parameters, dict):
+        return []
+    keys = (
+        "geometry_input",
+        "material_input",
+        "physics_input",
+        "study_input",
+        "mesh",
+        "file_path",
+        "out_path",
+        "wrapper",
+        "wrapper_name",
+        "method",
+    )
+    out: List[str] = []
+    for key in keys:
+        val = parameters.get(key)
+        if val is None or val == "" or val == {}:
+            continue
+        if isinstance(val, (dict, list)):
+            text = str(val)
+        else:
+            text = str(val).strip()
+        if not text:
+            continue
+        if len(text) > 220:
+            text = text[:217] + "..."
+        out.append(f"{key}: {text}")
+    return out
+
+
+def _serialize_modeling_steps(plan: ReActTaskPlan) -> List[Dict[str, Any]]:
+    steps: List[Dict[str, Any]] = []
+    for idx, step in enumerate(plan.execution_path, start=1):
+        params = step.parameters or {}
+        steps.append(
+            {
+                "index": idx,
+                "action": step.action,
+                "step_type": step.step_type,
+                "label": _STEP_LABELS.get(step.action, step.action),
+                "why": _STEP_WHY.get(step.action, "按 COMSOL 建模流程推进，服务最终可求解闭环。"),
+                "inputs": _param_highlights(params),
+                "parameters": params,
+                "status": step.status,
+            }
+        )
+    return steps
+
 
 class ReActAgent:
     """ReAct Agent - 协调推理和执行；可选 EventBus 用于可观测。"""
@@ -30,7 +111,7 @@ class ReActAgent:
         base_url: Optional[str] = None,
         ollama_url: Optional[str] = None,
         model: Optional[str] = None,
-        max_iterations: int = 10,
+        max_iterations: Optional[int] = None,
         event_bus: Optional[EventBus] = None,
         context_manager: Optional[Any] = None,
         error_collector: Optional[ErrorCollector] = None,
@@ -51,13 +132,24 @@ class ReActAgent:
             backend_value,
         )
 
+        def _emit_usage(usage: Dict[str, Any]) -> None:
+            if not self._event_bus:
+                return
+            try:
+                self._event_bus.emit_type(EventType.TOKEN_USAGE, usage)
+            except Exception:
+                pass
+
         self.llm = llm or LLMClient(
             backend=normalized_backend,
             api_key=api_key or settings.get_api_key_for_backend(normalized_backend),
             base_url=base_url or settings.get_base_url_for_backend(normalized_backend),
             ollama_url=ollama_url or settings.ollama_url,
             model=model or settings.get_model_for_backend(normalized_backend),
+            on_usage=_emit_usage,
         )
+        if llm is not None and getattr(self.llm, "on_usage", None) is None:
+            self.llm.on_usage = _emit_usage
 
         self.reasoning_engine = ReasoningEngine(
             self.llm,
@@ -78,7 +170,8 @@ class ReActAgent:
             self.llm, error_collector=self._error_collector
         )
 
-        self.max_iterations = max_iterations
+        # None / <=0 表示不设上限，持续调整直到可求解或致命失败
+        self.max_iterations = max_iterations if (max_iterations or 0) > 0 else None
 
         # PlanRuntime / TaskRuntime 同步：把 ReActTaskPlan 的状态镜像到
         # .port_sessions/{plan_runtime,task_runtime}.json，便于审计与桌面端展示。
@@ -119,7 +212,7 @@ class ReActAgent:
             return False, (plan.error or "任务失败").strip()
         if plan.error:
             return False, plan.error.strip()
-        return False, f"任务未完成（已达到最大调整次数: {self.max_iterations}）"
+        return False, "任务未完成（尚未得到可求解结果）"
 
     def run(
         self,
@@ -163,20 +256,54 @@ class ReActAgent:
         )
 
         if self._event_bus:
+            modeling_steps = _serialize_modeling_steps(plan)
             steps_summary = [
-                {"action": s.action, "step_type": s.step_type} for s in plan.execution_path
+                {
+                    "action": s["action"],
+                    "step_type": s["step_type"],
+                    "label": s["label"],
+                    "why": s["why"],
+                    "inputs": s["inputs"],
+                }
+                for s in modeling_steps
             ]
             requires_clarification = bool(plan.clarifying_questions and not clarifying_answers)
+            plan_description = getattr(plan, "plan_description", None) or ""
             self._event_bus.emit_type(
                 EventType.PLAN_END,
                 {
                     "steps": steps_summary,
                     "model_name": plan.model_name,
-                    "plan_description": getattr(plan, "plan_description", None) or "",
+                    "plan_description": plan_description,
                     "stop_after_step": getattr(plan, "stop_after_step", None),
                     "clarifying_questions": getattr(plan, "clarifying_questions", None),
                     "requires_clarification": requires_clarification,
                     "case_library_suggestions": getattr(plan, "case_library_suggestions", None),
+                },
+            )
+            # 推理思路 + 细致建模过程（供前端独立卡片展示）
+            self._event_bus.emit_type(
+                EventType.DECISION,
+                {
+                    "kind": "plan_rationale",
+                    "title": "规划推理思路",
+                    "reasoning": plan_description
+                    or "已按 COMSOL 标准流程拆解为可执行步骤，目标是产出可求解模型。",
+                    "basis": (user_input or "")[:500],
+                    "details": {
+                        "model_name": plan.model_name,
+                        "stop_after_step": getattr(plan, "stop_after_step", None) or "solve",
+                        "step_count": len(modeling_steps),
+                    },
+                },
+            )
+            self._event_bus.emit_type(
+                EventType.MODELING_PROCESS,
+                {
+                    "title": "建模细致过程",
+                    "summary": plan_description
+                    or "按几何 → 材料 → 物理场 → 网格 → 研究 → 求解推进。",
+                    "steps": modeling_steps,
                 },
             )
             if getattr(plan, "plan_confirmed", False):
@@ -192,9 +319,20 @@ class ReActAgent:
             # 使用特定错误类型由上层捕获并转换为「计划已生成，等待澄清问题」
             raise PlanNeedsClarification("计划已生成，等待澄清问题", plan)
 
-        # ReAct 主循环
-        for iteration in range(self.max_iterations):
-            logger.info("\n--- 第 %s/%s 轮（根据结果调整并继续）---", iteration + 1, self.max_iterations)
+        # ReAct 主循环：不以调整次数作为结束条件；直到可求解完成，或致命/无效迭代中断。
+        # max_iterations 仅作可选调试上限（None = 不限制）。
+        iteration = 0
+        while True:
+            iteration += 1
+            if self.max_iterations is not None and iteration > self.max_iterations:
+                logger.warning(
+                    "调试上限 max_iterations=%s 已触达；默认生产路径不应设置该上限",
+                    self.max_iterations,
+                )
+                if not plan.error:
+                    plan.error = "任务未完成（尚未得到可求解结果）"
+                break
+            logger.info("\n--- 第 %s 轮（持续调整直至可求解）---", iteration)
             if self._event_bus:
                 self._event_bus.emit_type(EventType.TASK_PHASE, {"phase": "thinking"})
 
@@ -253,7 +391,7 @@ class ReActAgent:
                     )
 
                 # 把每一轮 act/observe 后的状态同步给 PlanRuntime
-                self._sync_plan_runtime(plan, phase=f"iter_{iteration + 1}")
+                self._sync_plan_runtime(plan, phase=f"iter_{iteration}")
 
                 # 判断是否完成
                 if observation.status == "success" and self._is_all_steps_complete(plan):
@@ -289,7 +427,7 @@ class ReActAgent:
                         logger.info("[调整] 计划已更新，当前步骤: %s", plan.current_step_index)
 
             except Exception as e:
-                logger.error("第 %s 轮失败: %s", iteration + 1, e)
+                logger.error("第 %s 轮失败: %s", iteration, e)
                 self._error_collector.submit("run", "exception", {"message": str(e)})
                 plan.status = "failed"
                 plan.error = str(e)
@@ -304,6 +442,19 @@ class ReActAgent:
                         EventType.RUN_END,
                         {"model_path": final_path, "success": False, "message": str(e)},
                     )
+                    try:
+                        from agent.react.next_actions import next_actions_event_payload
+
+                        if not plan.error:
+                            plan.error = str(e)
+                        self._event_bus.emit_type(
+                            EventType.NEXT_ACTIONS,
+                            next_actions_event_payload(
+                                plan, success=False, model_path=final_path
+                            ),
+                        )
+                    except Exception:
+                        pass
                 raise RuntimeError(f"ReAct 流程失败: {e}") from e
 
         # 同步最终状态到 PlanRuntime，方便审计/桌面端读
@@ -329,6 +480,17 @@ class ReActAgent:
                     "message": end_message,
                 },
             )
+            try:
+                from agent.react.next_actions import next_actions_event_payload
+
+                self._event_bus.emit_type(
+                    EventType.NEXT_ACTIONS,
+                    next_actions_event_payload(
+                        plan, success=end_success, model_path=final_path
+                    ),
+                )
+            except Exception:
+                logger.debug("emit next_actions failed", exc_info=True)
 
         if plan.status != "completed":
             if end_success:
@@ -362,8 +524,46 @@ class ReActAgent:
         """
         plan.status = "planning"
 
-        # 使用推理引擎进行推理
+        # 使用推理引擎进行推理，并补齐可读决策依据
         thought = self.reasoning_engine.reason(plan)
+        current = plan.get_current_step()
+        action = str(thought.get("action") or "")
+        params = thought.get("parameters") if isinstance(thought.get("parameters"), dict) else {}
+        if not params and current:
+            params = current.parameters or {}
+            thought["parameters"] = params
+        label = _STEP_LABELS.get(action, action or "下一步")
+        why = _STEP_WHY.get(action, "按当前计划推进，服务最终可求解闭环。")
+        highlights = _param_highlights(params if isinstance(params, dict) else {})
+        progress = f"{plan.current_step_index + 1}/{max(len(plan.execution_path), 1)}"
+        reasoning = str(thought.get("reasoning") or "").strip()
+        if not reasoning or reasoning.startswith("执行步骤:") or reasoning.startswith("继续执行"):
+            reasoning = f"第 {progress} 步决定执行「{label}」。{why}"
+            if highlights:
+                reasoning += " 本步关键输入：" + "；".join(highlights[:3])
+            thought["reasoning"] = reasoning
+        thought["basis"] = why
+        thought["label"] = label
+        thought["progress"] = progress
+        thought["input_highlights"] = highlights
+
+        if self._event_bus and action not in ("", "complete"):
+            self._event_bus.emit_type(
+                EventType.DECISION,
+                {
+                    "kind": "step_decision",
+                    "title": f"决策：执行 {label}",
+                    "reasoning": thought.get("reasoning"),
+                    "basis": why,
+                    "action": action,
+                    "progress": progress,
+                    "inputs": highlights,
+                    "details": {
+                        "step_type": getattr(current, "step_type", None),
+                        "parameters": params,
+                    },
+                },
+            )
 
         return thought
 
@@ -483,6 +683,37 @@ class ReActAgent:
 
         # 使用迭代控制器更新计划
         updated_plan = self.iteration_controller.update_plan(plan, observation)
+        adjust_summary = getattr(
+            self.iteration_controller, "last_adjust_summary", None
+        ) or ""
+        if self._event_bus:
+            self._event_bus.emit_type(
+                EventType.DECISION,
+                {
+                    "kind": "adjust_decision",
+                    "title": "决策：根据观察结果调整计划",
+                    "reasoning": adjust_summary
+                    or "检测到执行偏差，已回退/修补相关步骤并继续朝可求解目标推进。",
+                    "basis": (observation.message or "")[:500],
+                    "details": {
+                        "observation_status": observation.status,
+                        "current_step_index": updated_plan.current_step_index + 1,
+                        "total_steps": len(updated_plan.execution_path),
+                        "plan_status": updated_plan.status,
+                        "plan_error": updated_plan.error,
+                    },
+                },
+            )
+            # 调整后刷新细致过程面板
+            self._event_bus.emit_type(
+                EventType.MODELING_PROCESS,
+                {
+                    "title": "调整后的建模过程",
+                    "summary": adjust_summary
+                    or "计划已更新，将从回退点继续执行。",
+                    "steps": _serialize_modeling_steps(updated_plan),
+                },
+            )
 
         return updated_plan
 

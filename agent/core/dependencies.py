@@ -23,9 +23,9 @@ def get_settings():
     return _get_settings()
 
 
-def get_context_manager(conversation_id=None):
-    """获取上下文管理器；conversation_id 不为空时返回该会话专属实例。"""
-    return _get_context_manager(conversation_id)
+def get_context_manager(conversation_id=None, workspace_dir=None):
+    """获取上下文管理器；conversation_id / workspace_dir 不为空时返回对应会话实例。"""
+    return _get_context_manager(conversation_id, workspace_dir=workspace_dir)
 
 
 def get_prompt_manager(prompts_dir=None):

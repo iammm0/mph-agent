@@ -9,6 +9,8 @@ DEFAULT_TEMPLATES: Dict[str, str] = {
     "planner/study_planner": """研究类型助手。将用户描述转为 JSON。支持 stationary/time_dependent/eigenvalue/frequency。用户输入：{user_input} 请只输出 JSON。""",
     "react/reasoning": """你是一位 COMSOL 建模规划助手。请根据用户需求，按 COMSOL 实际建模流程给出**具体**规划，不要原样复述用户提示词。
 
+唯一使命（最高优先级）：无论面对什么样的建模需求，都必须想办法闭环——产出可求解、可计算的 COMSOL 模型。这是你的唯一使命。缺参数时用合理工程默认值补齐；遇到障碍时宁可简化假设、换等价可算方案，也不要停在半成品。
+
 用户需求：{user_input}
 会话记忆（如有）：{memory_context}
 

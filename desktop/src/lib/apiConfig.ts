@@ -54,7 +54,7 @@ export const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
     description: "DeepSeek 官方接口。",
     runtimeBackend: "deepseek",
     defaultBaseUrl: "",
-    defaultModel: "deepseek-reasoner",
+    defaultModel: "deepseek-flash",
     requiresApiKey: true,
     supportsBaseUrl: false,
     group: "china-direct",
@@ -97,16 +97,34 @@ function makeDefaultConfig(): ApiConfig {
   };
 }
 
+/** DeepSeek 已下线 deepseek-chat / deepseek-reasoner，映射到当前可用模型 */
+const LEGACY_DEEPSEEK_MODELS: Record<string, string> = {
+  "deepseek-chat": "deepseek-flash",
+  "deepseek-reasoner": "deepseek-flash",
+  "deepseek-v4-flash": "deepseek-flash",
+  "deepseek-v4-flash-vision-exp": "deepseek-flash",
+};
+
+function normalizeDeepSeekModel(model: string): string {
+  const trimmed = model.trim();
+  return LEGACY_DEEPSEEK_MODELS[trimmed] ?? trimmed;
+}
+
 function mergeProviderConfig(
   provider: ProviderCatalogEntry,
   raw?: Partial<ProviderConfig>
 ): ProviderConfig {
   const defaults = makeDefaultProviderConfig(provider);
+  const modelRaw =
+    typeof raw?.model === "string" ? raw.model : defaults.model;
   return {
     api_key: typeof raw?.api_key === "string" ? raw.api_key : defaults.api_key,
     base_url:
       typeof raw?.base_url === "string" ? raw.base_url : defaults.base_url,
-    model: typeof raw?.model === "string" ? raw.model : defaults.model,
+    model:
+      provider.id === "deepseek"
+        ? normalizeDeepSeekModel(modelRaw)
+        : modelRaw,
   };
 }
 

@@ -71,6 +71,8 @@ interface AppState {
   busyConversationId: string | null;
   /** 编辑并重新建模时预填输入框的内容，设置后 Prompt 会同步到输入框 */
   editingDraft: string | null;
+  /** 重新编辑某条用户消息时，下次发送会从该下标截断后续消息 */
+  editResumeFromIndex: number | null;
   activeDialog: DialogType;
   /** 计划模式下，等待用户澄清的问题列表 */
   pendingPlanQuestions: ClarifyingQuestion[] | null;
@@ -81,7 +83,7 @@ interface AppState {
 }
 
 type AppAction =
-  | { type: "NEW_CONVERSATION"; workspaceDir: string }
+  | { type: "NEW_CONVERSATION"; workspaceDir: string; title?: string }
   | { type: "SWITCH_CONVERSATION"; id: string }
   | { type: "SET_CONVERSATION_TITLE"; id: string; title: string }
   | { type: "SET_CONVERSATION_WORKSPACE_DIR"; id: string; path: string }
@@ -114,7 +116,12 @@ type AppAction =
   | { type: "SET_OUTPUT"; output: string | null }
   | { type: "SET_EXEC_CODE_ONLY"; value: boolean }
   | { type: "SET_BUSY_CONVERSATION"; conversationId: string | null }
-  | { type: "SET_EDITING_DRAFT"; text: string | null }
+  | {
+      type: "SET_EDITING_DRAFT";
+      text: string | null;
+      resumeFromIndex?: number | null;
+    }
+  | { type: "CLEAR_EDIT_RESUME" }
   | { type: "REMOVE_MESSAGES_FROM_INDEX"; conversationId: string; fromIndex: number }
   | { type: "SET_DIALOG"; dialog: DialogType }
   | { type: "SET_PLAN_QUESTIONS"; questions: ClarifyingQuestion[] | null }
@@ -175,6 +182,7 @@ function getInitialState(): AppState {
       execCodeOnly: false,
       busyConversationId: null,
       editingDraft: null,
+      editResumeFromIndex: null,
       activeDialog: null,
       pendingPlanQuestions: null,
       lastPlanInput: null,
@@ -199,6 +207,7 @@ function getInitialState(): AppState {
     execCodeOnly: false,
     busyConversationId: null,
     editingDraft: null,
+    editResumeFromIndex: null,
     activeDialog: null,
     pendingPlanQuestions: null,
     lastPlanInput: null,
@@ -214,9 +223,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
       const workspaceDir = action.workspaceDir.trim();
       if (!workspaceDir) return state;
       const folderName = workspaceDir.split(/[/\\]/).filter(Boolean).pop() || "工作空间";
+      const title = action.title?.trim() || folderName;
       const conv: Conversation = {
         id: genId(),
-        title: folderName,
+        title,
         createdAt: Date.now(),
         workspaceDir,
         groupId: null,
@@ -428,7 +438,14 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case "SET_BUSY_CONVERSATION":
       return { ...state, busyConversationId: action.conversationId };
     case "SET_EDITING_DRAFT":
-      return { ...state, editingDraft: action.text };
+      return {
+        ...state,
+        editingDraft: action.text,
+        editResumeFromIndex:
+          action.text == null ? null : (action.resumeFromIndex ?? null),
+      };
+    case "CLEAR_EDIT_RESUME":
+      return { ...state, editResumeFromIndex: null };
     case "REMOVE_MESSAGES_FROM_INDEX": {
       const { conversationId, fromIndex } = action;
       const prev = state.messagesByConversation[conversationId] ?? [];

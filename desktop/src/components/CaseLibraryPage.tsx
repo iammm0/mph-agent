@@ -1,33 +1,36 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { useAppState } from "../context/AppStateContext";
 import {
   CASE_LIBRARY_TARGET_VERSION,
+  downloadCaseLibraryFiles,
   fetchCaseLibrary,
   fetchCaseLibrarySyncStatus,
   formatCaseLibraryTime,
+  pickCaseDownloadFiles,
   startCaseLibrarySync,
   type CaseLibraryItem,
   type CaseLibrarySyncState,
 } from "../lib/caseLibrary";
-import { trackCaseLibraryRecord, type CaseLibraryRecordAction } from "../lib/caseLibraryRecords";
+import {
+  getCaseLibraryRecord,
+  loadCaseLibraryDownloadDir,
+  pickLocalMphPath,
+  saveCaseLibraryDownloadDir,
+  trackCaseLibraryRecord,
+} from "../lib/caseLibraryRecords";
 
 const CASE_LIBRARY_STATUS_COLLAPSED_KEY = "mph-agent-case-library-status-collapsed";
 
-function buildParsePrompt(item: CaseLibraryItem): string {
-  return [
-    "请解析这个 COMSOL 官方案例，并给出可复现的建模步骤与关键参数：",
-    `案例标题：${item.title}`,
-    `案例分类：${item.category}`,
-    `案例版本：${item.latestVersion || CASE_LIBRARY_TARGET_VERSION}`,
-    `官方链接：${item.officialUrl}`,
-    `下载链接：${item.downloadUrl}`,
-    "补充要求：",
-    `0. 请按 ${CASE_LIBRARY_TARGET_VERSION} 的界面、模块命名和案例文件来复现`,
-    "1. 先说明适合的物理场接口和耦合关系",
-    "2. 再给出几何、材料、边界条件、研究类型",
-    "3. 最后给出在当前项目里可直接执行的建模指令草案",
-  ].join("\n");
+function joinPath(base: string, ...parts: string[]): string {
+  const sep = base.includes("\\") ? "\\" : "/";
+  const trimmed = base.replace(/[/\\]+$/, "");
+  return [trimmed, ...parts.map((p) => p.replace(/^[/\\]+/, "").replace(/[/\\]+/g, sep))].join(sep);
+}
+
+function sanitizeDirName(name: string): string {
+  return name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").trim() || "case";
 }
 
 function renderSyncSummary(syncState: CaseLibrarySyncState | null): string {
@@ -50,16 +53,19 @@ function renderSyncSummary(syncState: CaseLibrarySyncState | null): string {
 }
 
 export function CaseLibraryPage() {
-  const { dispatch } = useAppState();
+  const { state, dispatch } = useAppState();
   const [items, setItems] = useState<CaseLibraryItem[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [parsingId, setParsingId] = useState<string | null>(null);
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState("全部");
   const [syncState, setSyncState] = useState<CaseLibrarySyncState | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [statusText, setStatusText] = useState("");
+  const [recordsTick, setRecordsTick] = useState(0);
   const [statusCollapsed, setStatusCollapsed] = useState(() => {
     try {
       return typeof localStorage !== "undefined" && localStorage.getItem(CASE_LIBRARY_STATUS_COLLAPSED_KEY) === "1";
@@ -138,26 +144,140 @@ export function CaseLibraryPage() {
     [items, selectedCaseId]
   );
 
+  const selectedLocalMph = useMemo(() => {
+    if (!selectedCase) return null;
+    return pickLocalMphPath(getCaseLibraryRecord(selectedCase.id));
+  }, [selectedCase, recordsTick]);
+
   const openExternalPath = useCallback(async (path: string, successText: string) => {
     try {
       await invoke("open_path", { path });
       setStatusText(successText);
     } catch (error) {
-      setStatusText(`无法打开链接：${String(error)}`);
+      setStatusText(`无法打开：${String(error)}`);
     }
   }, []);
 
-  const handleCaseLink = useCallback(async (item: CaseLibraryItem, action: CaseLibraryRecordAction) => {
-    const url = action === "download" ? item.downloadUrl : item.officialUrl;
-    await openExternalPath(url, action === "download" ? "已在默认浏览器触发案例下载" : "已打开官方案例库");
-    if (action === "download") {
-      trackCaseLibraryRecord(item, action);
-    }
-  }, [openExternalPath]);
+  const resolveDownloadDir = useCallback(
+    async (item: CaseLibraryItem) => {
+      const remembered = loadCaseLibraryDownloadDir();
+      const workspace = state.workspaceDir?.trim();
+      const preferred = remembered || (workspace ? joinPath(workspace, "cases") : "");
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "选择案例下载目录",
+        defaultPath: preferred || undefined,
+      });
+      if (selected == null) return null;
+      const root = String(selected);
+      saveCaseLibraryDownloadDir(root);
+      const leaf = sanitizeDirName(item.slug || item.applicationId || item.id || item.title);
+      return joinPath(root, leaf);
+    },
+    [state.workspaceDir]
+  );
+
+  const handleDownloadCase = useCallback(
+    async (item: CaseLibraryItem) => {
+      const files = pickCaseDownloadFiles(item);
+      if (files.length === 0) {
+        setStatusText("该案例没有可用的下载链接");
+        return;
+      }
+      const outputDir = await resolveDownloadDir(item);
+      if (!outputDir) {
+        setStatusText("已取消下载");
+        return;
+      }
+      setDownloadingId(item.id);
+      setStatusText(`正在下载到 ${outputDir} …`);
+      try {
+        const result = await downloadCaseLibraryFiles({ outputDir, files });
+        if (!result.ok || result.files.length === 0) {
+          setStatusText(result.message || "下载失败");
+          return;
+        }
+        trackCaseLibraryRecord(item, "download", {
+          localDir: result.outputDir,
+          localPaths: result.files.map((f) => f.path),
+        });
+        setRecordsTick((n) => n + 1);
+        const mph = result.files.find((f) => f.path.toLowerCase().endsWith(".mph"));
+        setStatusText(
+          mph
+            ? `已下载 ${result.files.length} 个文件，主模型：${mph.path}`
+            : `已下载 ${result.files.length} 个文件到 ${result.outputDir}`
+        );
+      } finally {
+        setDownloadingId(null);
+      }
+    },
+    [resolveDownloadDir]
+  );
+
+  const handleParseCase = useCallback(
+    async (item: CaseLibraryItem) => {
+      let record = getCaseLibraryRecord(item.id);
+      let localMph = pickLocalMphPath(record);
+
+      if (!localMph) {
+        setStatusText("尚未本地下载模型，正在先下载…");
+        await handleDownloadCase(item);
+        record = getCaseLibraryRecord(item.id);
+        localMph = pickLocalMphPath(record);
+      }
+      if (!localMph) {
+        setStatusText("没有可用的本地 .mph 文件，无法解析。请先成功下载案例。");
+        return;
+      }
+
+      setParsingId(item.id);
+      setStatusText(`正在解析：${localMph}`);
+      try {
+        const res = await invoke<{
+          ok: boolean;
+          message: string;
+          saved_path?: string | null;
+        }>("bridge_send", {
+          cmd: "case",
+          payload: {
+            model_path: localMph,
+            conversation_id: state.currentConversationId ?? undefined,
+          },
+        });
+        trackCaseLibraryRecord(item, "parse");
+        setRecordsTick((n) => n + 1);
+        if (res.ok) {
+          const cid = state.currentConversationId;
+          if (cid) {
+            dispatch({
+              type: "ADD_MESSAGE",
+              conversationId: cid,
+              role: "assistant",
+              text: res.message,
+              success: true,
+              caseSavedPath: res.saved_path ?? null,
+            });
+            dispatch({ type: "SET_VIEW", view: "session" });
+          }
+          setStatusText(res.saved_path ? `解析完成，已保存：${res.saved_path}` : "解析完成");
+        } else {
+          setStatusText(res.message || "解析失败");
+        }
+      } catch (error) {
+        setStatusText(`解析失败：${String(error)}`);
+      } finally {
+        setParsingId(null);
+      }
+    },
+    [dispatch, handleDownloadCase, state.currentConversationId]
+  );
 
   const openCaseDetail = useCallback((item: CaseLibraryItem) => {
     setSelectedCaseId(item.id);
     trackCaseLibraryRecord(item, "view");
+    setRecordsTick((n) => n + 1);
     setStatusText("已打开程序内详情");
   }, []);
 
@@ -165,14 +285,6 @@ export function CaseLibraryPage() {
     setSelectedCaseId(null);
     setStatusText("");
   }, []);
-
-  const handleQuickParse = useCallback(
-    (item: CaseLibraryItem) => {
-      dispatch({ type: "SET_EDITING_DRAFT", text: buildParsePrompt(item) });
-      dispatch({ type: "SET_VIEW", view: "session" });
-    },
-    [dispatch]
-  );
 
   const handleRefresh = useCallback(async () => {
     setStatusText("");
@@ -311,23 +423,35 @@ export function CaseLibraryPage() {
                 ))}
               </div>
 
+              {selectedLocalMph && (
+                <p className="case-detail-empty">
+                  本地模型：{selectedLocalMph}
+                </p>
+              )}
+
               <div className="case-card-actions">
                 <button
                   type="button"
                   className="dialog-btn secondary"
-                  onClick={() => void handleCaseLink(selectedCase, "view")}
+                  onClick={() => void openExternalPath(selectedCase.officialUrl, "已打开官方案例库")}
                 >
                   官方案例库
                 </button>
                 <button
                   type="button"
                   className="dialog-btn secondary"
-                  onClick={() => void handleCaseLink(selectedCase, "download")}
+                  disabled={downloadingId === selectedCase.id}
+                  onClick={() => void handleDownloadCase(selectedCase)}
                 >
-                  下载案例
+                  {downloadingId === selectedCase.id ? "下载中…" : "下载到本地"}
                 </button>
-                <button type="button" className="dialog-btn primary" onClick={() => handleQuickParse(selectedCase)}>
-                  一键转解析
+                <button
+                  type="button"
+                  className="dialog-btn primary"
+                  disabled={parsingId === selectedCase.id || downloadingId === selectedCase.id}
+                  onClick={() => void handleParseCase(selectedCase)}
+                >
+                  {parsingId === selectedCase.id ? "解析中…" : "一键转解析"}
                 </button>
               </div>
             </div>
@@ -394,7 +518,11 @@ export function CaseLibraryPage() {
                       type="button"
                       className="case-detail-download"
                       onClick={() =>
-                        void openExternalPath(download.url, `已打开下载链接：${download.filename || selectedCase.title}`)
+                        void handleDownloadCase({
+                          ...selectedCase,
+                          downloadUrl: download.url,
+                          downloads: [download],
+                        })
                       }
                     >
                       <strong>{download.filename || download.url}</strong>
@@ -478,7 +606,7 @@ export function CaseLibraryPage() {
                     className="dialog-btn secondary"
                     onClick={(event) => {
                       event.stopPropagation();
-                      void handleCaseLink(item, "view");
+                      void openExternalPath(item.officialUrl, "已打开官方案例库");
                     }}
                   >
                     官方案例库
@@ -486,22 +614,24 @@ export function CaseLibraryPage() {
                   <button
                     type="button"
                     className="dialog-btn secondary"
+                    disabled={downloadingId === item.id}
                     onClick={(event) => {
                       event.stopPropagation();
-                      void handleCaseLink(item, "download");
+                      void handleDownloadCase(item);
                     }}
                   >
-                    下载案例
+                    {downloadingId === item.id ? "下载中…" : "下载到本地"}
                   </button>
                   <button
                     type="button"
                     className="dialog-btn primary"
+                    disabled={parsingId === item.id || downloadingId === item.id}
                     onClick={(event) => {
                       event.stopPropagation();
-                      handleQuickParse(item);
+                      void handleParseCase(item);
                     }}
                   >
-                    一键转解析
+                    {parsingId === item.id ? "解析中…" : "一键转解析"}
                   </button>
                 </div>
               </article>

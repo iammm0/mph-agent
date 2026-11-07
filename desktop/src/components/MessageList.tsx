@@ -61,10 +61,12 @@ export function MessageList() {
 
   return (
     <div className="message-list">
-      {messages.map((msg) => {
+      {messages.map((msg, index) => {
         switch (msg.role) {
           case "user":
-            return <UserMessage key={msg.id} message={msg} />;
+            return (
+              <UserMessage key={msg.id} message={msg} messageIndex={index} />
+            );
           case "assistant":
             return <AssistantMessage key={msg.id} message={msg} />;
           case "system":

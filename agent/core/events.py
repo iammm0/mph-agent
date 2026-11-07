@@ -12,6 +12,10 @@ class EventType(str, Enum):
     THINK_CHUNK = "think_chunk"
     """LLM 流式输出的一小段文本（思维过程），data: { phase, chunk }"""
     LLM_STREAM_CHUNK = "llm_stream_chunk"
+    # 可读的决策依据：为何走这一步、依据什么错误/规则调整
+    DECISION = "decision"
+    # 建模细致过程：规划完成后的步骤清单与每步输入要点
+    MODELING_PROCESS = "modeling_process"
     ACTION_START = "action_start"
     ACTION_END = "action_end"
     EXEC_RESULT = "exec_result"
@@ -30,8 +34,12 @@ class EventType(str, Enum):
     STEP_END = "step_end"
     # 一次构建任务结束（成功/失败/中止），携带最终模型路径，便于前端始终提供打开/预览
     RUN_END = "run_end"
+    # 跑完后的下一步可执行建议（可直接作为用户提示词发送）
+    NEXT_ACTIONS = "next_actions"
     # clawcode 集成事件：token 预算、计划 runtime 同步、worktree 进入/退出、ask-user 队列消费等
     TOKEN_BUDGET = "token_budget"
+    # 单次 LLM 调用的实际 token 用量（优先 API usage；无则估算）
+    TOKEN_USAGE = "token_usage"
     PLAN_RUNTIME_SYNC = "plan_runtime_sync"
     ASK_USER_RESOLVED = "ask_user_resolved"
     WORKTREE_ENTERED = "worktree_entered"

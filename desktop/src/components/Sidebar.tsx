@@ -3,25 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useAppState } from "../context/AppStateContext";
 import { ConfirmDialog } from "./dialogs/ConfirmDialog";
+import { CreateWorkspaceDialog } from "./dialogs/CreateWorkspaceDialog";
 import { Icon } from "./Icon";
 
 const SIDEBAR_COLLAPSED_KEY = "mph-agent-sidebar-collapsed";
-
-function formatTime(ts: number): string {
-  const d = new Date(ts);
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  if (sameDay) {
-    return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-  }
-  return d.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
-}
-
-function shortPath(path: string): string {
-  const parts = path.split(/[/\\]/).filter(Boolean);
-  if (parts.length <= 2) return path;
-  return `…/${parts.slice(-2).join("/")}`;
-}
 
 export function Sidebar() {
   const { state, dispatch } = useAppState();
@@ -38,6 +23,7 @@ export function Sidebar() {
   const [editTitle, setEditTitle] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -73,29 +59,29 @@ export function Sidebar() {
     [editTitle, dispatch]
   );
 
-  const handleDelete = useCallback((e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setDeleteConfirmId(id);
-  }, []);
-
-  const createWorkspace = useCallback(async () => {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: "选择工作空间目录",
-    });
-    if (selected == null) return;
-    const path = String(selected);
-    dispatch({ type: "NEW_CONVERSATION", workspaceDir: path });
-    const modelsDir = path.replace(/[/\\]+$/, "") + (path.includes("\\") ? "\\models" : "/models");
-    void invoke("bridge_send", {
-      cmd: "config_save",
-      payload: {
-        workspace_dir: path,
-        config: { MODEL_OUTPUT_DIR: modelsDir },
-      },
-    }).catch(() => {});
-  }, [dispatch]);
+  const handleCreateWorkspace = useCallback(
+    (payload: { name: string; folderPath: string }) => {
+      const path = payload.folderPath.trim();
+      if (!path) return;
+      dispatch({
+        type: "NEW_CONVERSATION",
+        workspaceDir: path,
+        title: payload.name,
+      });
+      dispatch({ type: "SET_VIEW", view: "session" });
+      setCreateOpen(false);
+      const modelsDir =
+        path.replace(/[/\\]+$/, "") + (path.includes("\\") ? "\\models" : "/models");
+      void invoke("bridge_send", {
+        cmd: "config_save",
+        payload: {
+          workspace_dir: path,
+          config: { MODEL_OUTPUT_DIR: modelsDir },
+        },
+      }).catch(() => {});
+    },
+    [dispatch]
+  );
 
   const changeWorkspaceDir = useCallback(
     async (id: string, currentPath?: string | null) => {
@@ -141,10 +127,10 @@ export function Sidebar() {
 
   return (
     <aside className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
-      <div className="sidebar-head">
+      <div className="sidebar-topbar">
         <button
           type="button"
-          className="sidebar-toggle"
+          className={`sidebar-icon-btn${collapsed ? "" : " is-active"}`}
           onClick={() => setCollapsed((c) => !c)}
           title={collapsed ? "展开侧边栏" : "收起侧边栏"}
           aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}
@@ -152,138 +138,146 @@ export function Sidebar() {
           <Icon name={collapsed ? "sidebar-right" : "sidebar-left"} size={16} />
         </button>
       </div>
-      <button
-        type="button"
-        className="sidebar-new"
-        onClick={() => void createWorkspace()}
-        title="新建工作空间"
-        aria-label="新建工作空间"
-      >
-        {collapsed ? (
-          <Icon name="add" size={16} />
-        ) : (
-          <>
-            <Icon name="add" size={14} /> 新建工作空间
-          </>
-        )}
-      </button>
+
+      <div className="sidebar-actions">
+        <button
+          type="button"
+          className="sidebar-new"
+          onClick={() => setCreateOpen(true)}
+          title="新建工作空间"
+          aria-label="新建工作空间"
+        >
+          <Icon name="add" size={15} />
+          {!collapsed && <span>新建工作空间</span>}
+        </button>
+      </div>
+
       {!collapsed && (
-        <>
-          <div className="sidebar-section-title">工作空间</div>
-          <div className="sidebar-list">
-            {state.conversations.length === 0 && (
-              <p className="sidebar-empty-hint">
-                先选择一个本地目录，创建工作空间。对话记录、计划与模型会写进其中的 context、models、plans。
-              </p>
-            )}
-            {state.conversations.map((conv) => (
-              <div
-                key={conv.id}
-                role="button"
-                tabIndex={0}
-                className={`sidebar-item ${conv.id === currentId ? "active" : ""}`}
-                onClick={() => dispatch({ type: "SWITCH_CONVERSATION", id: conv.id })}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    dispatch({ type: "SWITCH_CONVERSATION", id: conv.id });
-                  }
-                }}
-              >
-                {editingId === conv.id ? (
-                  <input
-                    type="text"
-                    className="sidebar-item-edit"
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    onBlur={() => submitRename(conv.id)}
-                    onKeyDown={(e) => {
-                      e.stopPropagation();
-                      if (e.key === "Enter") submitRename(conv.id);
-                      if (e.key === "Escape") {
-                        setEditingId(null);
-                        setEditTitle("");
-                      }
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    aria-label="重命名工作空间"
+        <div className="sidebar-list">
+          {state.conversations.length === 0 && (
+            <p className="sidebar-empty-hint">
+              选择本地目录新建工作空间。对话、计划与模型会写入其中的 context、models、plans。
+            </p>
+          )}
+          {state.conversations.map((conv) => (
+            <div
+              key={conv.id}
+              role="button"
+              tabIndex={0}
+              className={`sidebar-item ${conv.id === currentId ? "active" : ""}`}
+              onClick={() => {
+                dispatch({ type: "SWITCH_CONVERSATION", id: conv.id });
+                dispatch({ type: "SET_VIEW", view: "session" });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  dispatch({ type: "SWITCH_CONVERSATION", id: conv.id });
+                  dispatch({ type: "SET_VIEW", view: "session" });
+                }
+              }}
+            >
+              {editingId === conv.id ? (
+                <input
+                  type="text"
+                  className="sidebar-item-edit"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  onBlur={() => submitRename(conv.id)}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter") submitRename(conv.id);
+                    if (e.key === "Escape") {
+                      setEditingId(null);
+                      setEditTitle("");
+                    }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label="重命名工作空间"
+                />
+              ) : (
+                <>
+                  <span className="sidebar-item-title">{conv.title}</span>
+                  <Icon
+                    name="arrow-right-01"
+                    size={12}
+                    className="sidebar-item-chevron"
                   />
-                ) : (
-                  <>
-                    <span className="sidebar-item-title">{conv.title}</span>
-                    <span className="sidebar-item-time">
-                      {conv.workspaceDir ? shortPath(conv.workspaceDir) : formatTime(conv.createdAt)}
-                    </span>
-                    <div className="sidebar-item-menu-wrap">
-                      <button
-                        type="button"
-                        className="sidebar-item-menu-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuOpenId((openId) => (openId === conv.id ? null : conv.id));
-                        }}
-                        title="工作空间操作"
-                        aria-label="工作空间操作"
-                      >
-                        <Icon name="more" size={14} />
-                      </button>
-                      {menuOpenId === conv.id && (
-                        <div className="sidebar-item-menu">
+                  <div className="sidebar-item-menu-wrap">
+                    <button
+                      type="button"
+                      className="sidebar-item-menu-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuOpenId((openId) =>
+                          openId === conv.id ? null : conv.id
+                        );
+                      }}
+                      title="工作空间操作"
+                      aria-label="工作空间操作"
+                    >
+                      <Icon name="add" size={14} />
+                    </button>
+                    {menuOpenId === conv.id && (
+                      <div className="sidebar-item-menu" role="menu">
+                        <button
+                          type="button"
+                          className="sidebar-item-menu-item"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpenId(null);
+                            startRename(conv);
+                          }}
+                        >
+                          重命名
+                        </button>
+                        <button
+                          type="button"
+                          className="sidebar-item-menu-item"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpenId(null);
+                            void changeWorkspaceDir(conv.id, conv.workspaceDir);
+                          }}
+                        >
+                          修改目录
+                        </button>
+                        {conv.workspaceDir && (
                           <button
                             type="button"
                             className="sidebar-item-menu-item"
                             onClick={(e) => {
                               e.stopPropagation();
                               setMenuOpenId(null);
-                              startRename(conv);
+                              invoke("open_path", {
+                                path: conv.workspaceDir,
+                              }).catch(() => {});
                             }}
                           >
-                            重命名
+                            打开目录
                           </button>
-                          <button
-                            type="button"
-                            className="sidebar-item-menu-item"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMenuOpenId(null);
-                              void changeWorkspaceDir(conv.id, conv.workspaceDir);
-                            }}
-                          >
-                            修改目录
-                          </button>
-                          {conv.workspaceDir && (
-                            <button
-                              type="button"
-                              className="sidebar-item-menu-item"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setMenuOpenId(null);
-                                invoke("open_path", { path: conv.workspaceDir }).catch(() => {});
-                              }}
-                            >
-                              打开目录
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            className="sidebar-item-menu-item danger"
-                            onClick={(e) => {
-                              setMenuOpenId(null);
-                              handleDelete(e, conv.id);
-                            }}
-                          >
-                            删除
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        </>
+                        )}
+                        <button
+                          type="button"
+                          className="sidebar-item-menu-item danger"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpenId(null);
+                            setDeleteConfirmId(conv.id);
+                          }}
+                        >
+                          删除
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
       )}
+
       <div className="sidebar-foot">
         <button
           type="button"
@@ -297,6 +291,13 @@ export function Sidebar() {
           {!collapsed && <span>设置</span>}
         </button>
       </div>
+
+      <CreateWorkspaceDialog
+        open={createOpen}
+        onCancel={() => setCreateOpen(false)}
+        onCreate={handleCreateWorkspace}
+      />
+
       <ConfirmDialog
         open={deleteConfirmId !== null}
         title="删除工作空间"

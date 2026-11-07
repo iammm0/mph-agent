@@ -17,7 +17,7 @@
 
 ## 旁路工具
 
-会话记忆压缩、token 预算、计划镜像仍复用 `agent/clawcode_bridge/` 里的小工具，不参与 COMSOL 执行。
+会话记忆压缩、token 预算、计划镜像走 `agent/clawcode_bridge/`，底层只保留精简的 `agent/clawcode/`（compact / token / plan_runtime），不参与 COMSOL 执行。
 
 ## 调试
 

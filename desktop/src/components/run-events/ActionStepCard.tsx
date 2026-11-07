@@ -16,8 +16,14 @@ export function ActionStepCard({ event }: { event: RunEvent }) {
     const thought = d.thought as Record<string, unknown> | undefined;
     const actionText =
       (ui?.action as string | undefined) ??
-      (thought ? String(thought.action ?? JSON.stringify(thought)).slice(0, 80) : "");
-    const detail = ui?.detail as string | undefined;
+      (thought
+        ? String(thought.label ?? thought.action ?? JSON.stringify(thought)).slice(0, 80)
+        : "");
+    const detail = (ui?.detail as string | undefined) ?? (thought?.reasoning as string | undefined);
+    const basis = thought?.basis as string | undefined;
+    const highlights = Array.isArray(thought?.input_highlights)
+      ? thought!.input_highlights.map((item) => String(item ?? "").trim()).filter(Boolean)
+      : [];
     return (
       <div className="run-event-card run-event-card--action">
         <span className="run-event-card__icon run-event-card__icon--play" aria-hidden>
@@ -26,6 +32,18 @@ export function ActionStepCard({ event }: { event: RunEvent }) {
         <div className="run-event-card__main">
           <span className="run-event-card__title">{actionText || "执行"}</span>
           {detail && <p className="run-event-card__detail">{detail}</p>}
+          {basis && (
+            <p className="run-event-card__detail run-event-card__detail--secondary">
+              依据：{basis}
+            </p>
+          )}
+          {highlights.length > 0 && (
+            <ul className="run-event-card__list">
+              {highlights.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
     );

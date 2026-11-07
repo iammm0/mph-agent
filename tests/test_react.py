@@ -651,10 +651,10 @@ class TestReActAgent:
         )
         assert agent._is_all_steps_complete(plan) is False
 
-    def test_run_end_success_and_message_incomplete_uses_iteration_limit(self):
-        """非 completed 回落到轮次用尽提示。"""
+    def test_run_end_success_and_message_incomplete_without_iteration_limit(self):
+        """非 completed 回落到「尚未得到可求解结果」，不再提最大调整次数。"""
         agent = ReActAgent(llm=Mock())
-        agent.max_iterations = 10
+        assert agent.max_iterations is None
         plan = ReActTaskPlan(
             task_id="t_nc",
             model_name="m_nc",
@@ -671,7 +671,8 @@ class TestReActAgent:
         )
         ok, msg = agent._run_end_success_and_message(plan)
         assert ok is False
-        assert "最大调整次数" in msg
+        assert "尚未得到可求解结果" in msg
+        assert "最大调整次数" not in msg
 
     def test_warning_iteration_threshold_behavior(self):
         """回归：warning 未达阈值不迭代，达到阈值才迭代。"""
