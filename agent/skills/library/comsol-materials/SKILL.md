@@ -63,6 +63,7 @@ COMSOL 提供丰富的内置材料，可直接引用：
 ### 常见场景
 
 - **传热分析**：需设置 density、thermalconductivity、specificheat
-- **结构分析**：需设置 density、youngsmodulus、poissonsratio
+- **结构分析 / 固体力学**：必须设置 density、youngsmodulus（E）、poissonsratio（nu）。线弹性材料默认「来自材料」，材料节点缺 `nu`/`E` 时求解会直接失败。
 - **流体分析**：需设置 density、dynamicviscosity
 - **电磁分析**：需设置 electricconductivity、relpermittivity、relpermeability
+- 即使用内置材料库，结构场场景仍建议显式写上 E/nu，避免库加载失败或属性组不匹配。

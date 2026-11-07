@@ -54,10 +54,16 @@ class QAAgent(BaseAgent):
         user_input: str,
         *,
         on_chunk: Callable[[str], None],
+        on_reasoning_chunk: Optional[Callable[[str], None]] = None,
         **kwargs: Any,
     ) -> str:
         """流式对话回复，同时返回完整文本。"""
         logger.debug("Q&A 流式处理: %s", user_input[:80])
         prompt = f"{self.system_prompt}\n\n用户: {user_input}\n\n助手:"
-        reply = self.llm.call_stream(prompt, temperature=0.7, on_chunk=on_chunk)
+        reply = self.llm.call_stream(
+            prompt,
+            temperature=0.7,
+            on_chunk=on_chunk,
+            on_reasoning_chunk=on_reasoning_chunk,
+        )
         return (reply or "").strip()

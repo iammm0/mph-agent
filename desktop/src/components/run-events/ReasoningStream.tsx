@@ -3,6 +3,10 @@ import type { RunEvent } from "../../lib/types";
 import { RunEventBlock } from "./index";
 import { Icon } from "../Icon";
 import { sanitizeLLMDisplayText } from "../../lib/textSanitizer";
+import {
+  extractThinkingText,
+  ThinkingDisclosure,
+} from "./ThinkingDisclosure";
 
 const PHASE_LABELS: Record<string, string> = {
   planning: "规划",
@@ -66,24 +70,44 @@ type PlanRuntimeSyncPayload = {
   error?: unknown;
 };
 
-/** 合并连续的 llm_stream_chunk 为单条 */
+/** 合并连续同 phase/kind 的 llm_stream_chunk 为单条 */
 function mergeStreamChunks(events: RunEvent[]): RunEvent[] {
   const out: RunEvent[] = [];
   let buf = "";
   let phase = "";
+  let kind = "";
+  const flush = () => {
+    if (!buf) return;
+    out.push({
+      _event: true,
+      type: "llm_stream_chunk",
+      data: {
+        phase,
+        kind: kind || undefined,
+        chunk: buf,
+        text: buf,
+      },
+    });
+    buf = "";
+    phase = "";
+    kind = "";
+  };
   for (const e of events) {
     if (e.type === "llm_stream_chunk") {
+      const nextPhase = String(e.data?.phase ?? phase);
+      const nextKind = String(e.data?.kind ?? "content");
+      if (buf && (nextPhase !== phase || nextKind !== (kind || "content"))) {
+        flush();
+      }
       buf += (e.data?.chunk ?? e.data?.text ?? "") as string;
-      phase = (e.data?.phase ?? phase) as string;
+      phase = nextPhase;
+      kind = nextKind;
       continue;
     }
-    if (buf) {
-      out.push({ _event: true, type: "llm_stream_chunk", data: { phase, chunk: buf, text: buf } });
-      buf = "";
-    }
+    flush();
     out.push(e);
   }
-  if (buf) out.push({ _event: true, type: "llm_stream_chunk", data: { phase, chunk: buf, text: buf } });
+  flush();
   return out;
 }
 
@@ -246,13 +270,25 @@ export function groupEventsByPhase(events: RunEvent[]): PhaseBlock[] {
 }
 
 function visiblePhaseEvents(events: RunEvent[]): RunEvent[] {
-  const filtered = events.filter(
-    (evt) =>
-      evt.type !== "token_budget" &&
-      evt.type !== "token_usage" &&
-      evt.type !== "next_actions" &&
-      evt.type !== "plan_runtime_sync"
-  );
+  const filtered = events.filter((evt) => {
+    if (
+      evt.type === "token_budget" ||
+      evt.type === "token_usage" ||
+      evt.type === "next_actions" ||
+      evt.type === "plan_runtime_sync"
+    ) {
+      return false;
+    }
+    // 模型 reasoning 已由顶部 ThinkingDisclosure 展示，避免过程框重复
+    if (
+      evt.type === "llm_stream_chunk" &&
+      (String(evt.data?.kind ?? "") === "reasoning" ||
+        String(evt.data?.phase ?? "") === "thinking")
+    ) {
+      return false;
+    }
+    return true;
+  });
   return mergeCapabilityScan(filtered);
 }
 
@@ -453,13 +489,21 @@ function ProcessItem({
   const think = isThinkEvent(type);
   const tool = isToolEvent(type);
 
-  // 思考行：默认折叠为一行预览（仿 DSH ReasoningRow）；进行中展开
+  // 思考行：默认折叠为一行预览；进行中展开（完整正文含 think_chunk.reasoning）
   if (think) {
+    const thought = event.data?.thought as Record<string, unknown> | undefined;
     const full = sanitizeLLMDisplayText(
-      String(event.data?.chunk ?? event.data?.text ?? "")
+      String(
+        event.data?.chunk ??
+          event.data?.text ??
+          thought?.reasoning ??
+          ""
+      )
     );
     const preview = line;
     const showBody = open || Boolean(isLiveStreamTail);
+    const kindLabel =
+      String(event.data?.kind ?? "") === "reasoning" ? "Thinking" : "思考";
 
     return (
       <div
@@ -473,14 +517,14 @@ function ProcessItem({
           onClick={() => setOpen((v) => !v)}
           aria-expanded={showBody}
         >
-          <span className="dsh-process-item__kind">思考</span>
+          <span className="dsh-process-item__kind">{kindLabel}</span>
           {!showBody && preview ? (
             <span className="dsh-process-item__preview" title={preview}>
               {preview}
             </span>
           ) : (
             <span className="dsh-process-item__hint">
-              {isLiveStreamTail ? "输出中" : "已折叠"}
+              {isLiveStreamTail ? "输出中" : "点击展开"}
             </span>
           )}
           <span className="dsh-process-item__chevron" aria-hidden>
@@ -589,29 +633,39 @@ export function ReasoningStream({
         ? `${thinkCount} 步思考`
         : `${allVisible.length} 项过程`;
 
-  if (blocks.length === 0) return null;
+  const thinkingText = useMemo(() => extractThinkingText(events), [events]);
+
+  if (blocks.length === 0 && !thinkingText) return null;
 
   return (
     <div className={`dsh-process${isLive ? " dsh-process--live" : ""}`}>
-      {isLive && (
+      {thinkingText ? (
+        <ThinkingDisclosure
+          text={thinkingText}
+          isLive={isLive}
+          durationMs={durationMs}
+        />
+      ) : isLive ? (
         <div className="dsh-process__status" role="status" aria-live="polite">
           <span className="dsh-process__status-dot" aria-hidden />
           <span className="dsh-process__status-text">{liveLabel}</span>
         </div>
+      ) : null}
+
+      {blocks.length > 0 && (
+        <div className="dsh-process__boxes">
+          {blocks.map((block, i) => (
+            <ProcessBox
+              key={`${block.phase}-${i}`}
+              block={block}
+              isLive={isLive}
+              turnExpanded={turnExpanded}
+            />
+          ))}
+        </div>
       )}
 
-      <div className="dsh-process__boxes">
-        {blocks.map((block, i) => (
-          <ProcessBox
-            key={`${block.phase}-${i}`}
-            block={block}
-            isLive={isLive}
-            turnExpanded={turnExpanded}
-          />
-        ))}
-      </div>
-
-      {!isLive && (
+      {!isLive && blocks.length > 0 && (
         <button
           type="button"
           className={`dsh-process__toggle${turnExpanded ? " is-open" : ""}`}

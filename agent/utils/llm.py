@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Callable, Dict, Literal, Optional
+
+# 尽早设置：litellm 在 import 时就会尝试拉取 GitHub model cost map
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 from agent.utils.logger import get_logger
 
@@ -54,6 +58,7 @@ def _usage_from_obj(usage: Any) -> Dict[str, int]:
 
 
 def _ensure_litellm():
+    # LITELLM_LOCAL_MODEL_COST_MAP 已在模块顶部 setdefault
     try:
         import litellm  # type: ignore[import-not-found]
     except ImportError as exc:
@@ -85,20 +90,58 @@ def resolve_litellm_model(backend: RuntimeBackend, model: str) -> str:
     return _with_prefix(model, "openai")
 
 
-def _chunk_text(chunk: Any) -> str:
-    try:
-        choices = getattr(chunk, "choices", None) or []
-        if not choices:
-            return ""
-        delta = getattr(choices[0], "delta", None)
-        content = getattr(delta, "content", None) if delta is not None else None
-        if content:
-            return str(content)
-        message = getattr(choices[0], "message", None)
-        content = getattr(message, "content", None) if message is not None else None
-        return str(content) if content else ""
-    except Exception:
+def _delta_field(delta: Any, *names: str) -> str:
+    if delta is None:
         return ""
+    for name in names:
+        value = getattr(delta, name, None)
+        if value is None and isinstance(delta, dict):
+            value = delta.get(name)
+        if value:
+            return str(value)
+    return ""
+
+
+def _chunk_parts(chunk: Any) -> tuple[str, str]:
+    """返回 (content, reasoning_content)。兼容 DeepSeek / OpenAI 推理通道字段。"""
+    try:
+        choices = getattr(chunk, "choices", None)
+        if choices is None and isinstance(chunk, dict):
+            choices = chunk.get("choices")
+        choices = choices or []
+        if not choices:
+            return "", ""
+        choice = choices[0]
+        delta = getattr(choice, "delta", None)
+        if delta is None and isinstance(choice, dict):
+            delta = choice.get("delta")
+        content = _delta_field(delta, "content")
+        reasoning = _delta_field(
+            delta,
+            "reasoning_content",
+            "reasoning",
+            "thinking",
+        )
+        if content or reasoning:
+            return content, reasoning
+        message = getattr(choice, "message", None)
+        if message is None and isinstance(choice, dict):
+            message = choice.get("message")
+        content = _delta_field(message, "content")
+        reasoning = _delta_field(
+            message,
+            "reasoning_content",
+            "reasoning",
+            "thinking",
+        )
+        return content, reasoning
+    except Exception:
+        return "", ""
+
+
+def _chunk_text(chunk: Any) -> str:
+    content, _reasoning = _chunk_parts(chunk)
+    return content
 
 
 def _response_text(response: Any) -> str:
@@ -298,8 +341,9 @@ class LLMClient:
         temperature: float = 0.1,
         max_retries: int = 3,
         on_chunk: Optional[Callable[[str], None]] = None,
+        on_reasoning_chunk: Optional[Callable[[str], None]] = None,
     ) -> str:
-        if not on_chunk:
+        if not on_chunk and not on_reasoning_chunk:
             return self.call(prompt, model, temperature, max_retries)
 
         import time
@@ -326,10 +370,13 @@ class LLMClient:
                         chunk_usage = chunk.get("usage")
                     if chunk_usage is not None:
                         usage_obj = chunk_usage
-                    text = _chunk_text(chunk)
+                    text, reasoning = _chunk_parts(chunk)
+                    if reasoning and on_reasoning_chunk:
+                        on_reasoning_chunk(reasoning)
                     if text:
                         full.append(text)
-                        on_chunk(text)
+                        if on_chunk:
+                            on_chunk(text)
                 result = "".join(full)
                 if result.strip():
                     self._record_usage(

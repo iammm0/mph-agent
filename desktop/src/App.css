@@ -342,6 +342,7 @@ body {
 
 /* Sidebar */
 .sidebar {
+    position: relative;
     width: 260px;
     flex-shrink: 0;
     display: flex;
@@ -351,12 +352,49 @@ body {
     background: var(--bg-menu);
     border-right: 1px solid var(--border);
     transition: width 0.2s ease;
+    box-sizing: border-box;
+}
+.sidebar.is-resizing {
+    transition: none;
+    user-select: none;
 }
 .sidebar-collapsed {
     width: 56px;
     min-width: 56px;
     align-items: center;
     padding-inline: 8px;
+}
+.sidebar-resize-handle {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 20;
+    touch-action: none;
+}
+.sidebar-resize-handle::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 2px;
+    width: 2px;
+    border-radius: 1px;
+    background: transparent;
+    transition: background 0.12s;
+}
+.sidebar-resize-handle:hover::after,
+.sidebar.is-resizing .sidebar-resize-handle::after {
+    background: color-mix(in srgb, var(--accent, #3b82f6) 70%, transparent);
+}
+body.sidebar-resizing {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
+body.sidebar-resizing * {
+    cursor: col-resize !important;
 }
 
 /* Claude 式顶部图标行 */
@@ -503,6 +541,85 @@ body {
     font-size: 12px;
     line-height: 1.45;
     color: var(--text-muted);
+}
+.sidebar-workspace {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 10px;
+}
+.sidebar-workspace-head {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 2px;
+}
+.sidebar-workspace-toggle {
+    flex: 1;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+}
+.sidebar-workspace-toggle:hover,
+.sidebar-workspace-toggle.is-active {
+    background: var(--bg-element);
+    color: var(--text);
+}
+.sidebar-workspace-caret,
+.sidebar-workspace-folder,
+.sidebar-task-dot {
+    flex-shrink: 0;
+    display: inline-flex;
+    opacity: 0.85;
+}
+.sidebar-workspace-caret {
+    width: 14px;
+    justify-content: center;
+    opacity: 0.7;
+}
+.sidebar-workspace-folder {
+    opacity: 0.9;
+}
+.sidebar-workspace-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sidebar-workspace-count {
+    flex-shrink: 0;
+    font-size: 11px;
+    opacity: 0.7;
+    font-weight: 500;
+}
+.sidebar-workspace-menu-wrap {
+    position: relative;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.12s;
+}
+.sidebar-workspace-head:hover .sidebar-workspace-menu-wrap,
+.sidebar-workspace-menu-wrap:focus-within {
+    opacity: 1;
+}
+.sidebar-item--task {
+    padding-left: 28px;
+    font-size: 12.5px;
+    gap: 8px;
+}
+.sidebar-task-dot {
+    opacity: 0.55;
 }
 .sidebar-foot {
     margin-top: auto;
@@ -1760,6 +1877,82 @@ body {
     flex-direction: column;
     gap: 10px;
     width: 100%;
+}
+
+/* Cursor 式 Thinking：可展开推理过程 */
+.thinking-disclosure {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+}
+.thinking-disclosure__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0;
+    padding: 2px 4px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.4;
+    cursor: pointer;
+    user-select: none;
+}
+.thinking-disclosure__toggle:hover {
+    color: var(--text);
+    background: color-mix(in srgb, var(--bg-element) 55%, transparent);
+}
+.thinking-disclosure__chevron {
+    display: inline-flex;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+.thinking-disclosure__label {
+    font-weight: 500;
+    letter-spacing: 0.01em;
+}
+.thinking-disclosure.is-live .thinking-disclosure__label {
+    color: var(--text);
+}
+.thinking-disclosure__live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--primary);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 40%, transparent);
+    animation: dsh-status-pulse 1.4s ease-out infinite;
+    flex-shrink: 0;
+}
+.thinking-disclosure__body {
+    margin: 0 0 2px 8px;
+    padding: 0 0 2px 12px;
+    border-left: 2px solid color-mix(in srgb, var(--border) 85%, var(--text-muted));
+    color: var(--text-muted);
+    font-size: 12.5px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: min(42vh, 420px);
+    overflow: auto;
+}
+.thinking-disclosure.is-live .thinking-disclosure__body {
+    color: color-mix(in srgb, var(--text-muted) 70%, var(--text));
+}
+.thinking-disclosure__caret {
+    display: inline-block;
+    width: 7px;
+    height: 1.05em;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    background: var(--primary);
+    animation: dsh-caret-blink 1s step-end infinite;
 }
 
 .dsh-process__status {
@@ -4373,9 +4566,44 @@ body {
     }
 }
 
-/* Assistant message: 在文件管理器中打开 */
+/* Assistant message: 模型位置与打开快捷方式 */
+.assistant-msg-model-card {
+    margin: 8px 0 4px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-element);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.assistant-msg-model-card--ok {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-element));
+}
+.assistant-msg-model-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted, #888);
+    letter-spacing: 0.02em;
+}
+.assistant-msg-model-path {
+    display: block;
+    font-size: 12px;
+    line-height: 1.45;
+    word-break: break-all;
+    white-space: pre-wrap;
+    color: var(--fg, inherit);
+    user-select: text;
+}
+.assistant-msg-model-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
 .assistant-msg-model-btn {
-    padding: 2px 8px;
+    padding: 4px 10px;
     border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--bg-element);
@@ -4999,6 +5227,124 @@ body {
     margin-left: auto;
     justify-content: flex-end;
     gap: 8px;
+    flex-wrap: wrap;
+}
+.composer-compute-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 220px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    background: color-mix(in srgb, var(--bg-element) 70%, transparent);
+    color: var(--text-secondary, var(--text));
+    font-size: 11px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    font: inherit;
+}
+.composer-compute-badge:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+.composer-compute-badge:not(:disabled):hover {
+    border-color: color-mix(in srgb, var(--accent, #3b82f6) 45%, var(--border));
+}
+.settings-hint {
+    margin: 0 0 8px;
+    color: var(--text-muted, var(--text-secondary));
+    font-size: 12px;
+    line-height: 1.45;
+}
+.settings-compute-prefs {
+    display: grid;
+    gap: 8px;
+}
+.settings-compute-pref {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+    background: color-mix(in srgb, var(--bg-element) 65%, transparent);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+}
+.settings-compute-pref strong {
+    font-size: 13px;
+}
+.settings-compute-pref span {
+    font-size: 12px;
+    color: var(--text-muted, var(--text-secondary));
+}
+.settings-compute-pref.is-selected {
+    border-color: color-mix(in srgb, var(--accent, #3b82f6) 55%, var(--border));
+    background: color-mix(in srgb, var(--accent, #3b82f6) 10%, var(--bg-element));
+}
+.composer-compute-badge__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #8b93a7;
+    flex-shrink: 0;
+}
+.composer-compute-badge.is-cpu .composer-compute-badge__dot {
+    background: #6b7280;
+}
+.composer-compute-badge.is-gpu_standby .composer-compute-badge__dot {
+    background: #d97706;
+}
+.composer-compute-badge.is-gpu .composer-compute-badge__dot {
+    background: #16a34a;
+    box-shadow: 0 0 0 3px color-mix(in srgb, #16a34a 22%, transparent);
+}
+.composer-compute-badge__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.composer-solve-progress {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 140px;
+    max-width: 280px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    background: color-mix(in srgb, var(--bg-element) 78%, transparent);
+    color: var(--text-secondary, var(--text));
+    font-size: 11px;
+    line-height: 1.2;
+}
+.composer-solve-progress__bar {
+    position: relative;
+    width: 52px;
+    height: 5px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--border) 70%, transparent);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.composer-solve-progress__fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #3b82f6, #22c55e);
+    transition: width 0.25s ease;
+}
+.composer-solve-progress__text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .composer-token-meter {
     display: inline-flex;

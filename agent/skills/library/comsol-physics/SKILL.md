@@ -25,9 +25,10 @@ triggers: [传热, 热, 温度, 电磁, 电场, 磁场, 结构, 力学, 流体, 
 
 ### 传热 (heat)
 - **Temperature**：指定温度，参数 T0
-- **HeatFlux**：热流密度，参数 q0
-- **ConvectiveHeatFlux**：对流换热，参数 h（换热系数）、Text（环境温度）
+- **HeatFlux**：热流密度，参数 q0；选择面用具体面 ID 列表
+- **ConvectiveHeatFlux**：对流换热，参数 h（换热系数）、Text（环境温度）。实现上映射为 `HeatFluxBoundary` + `HeatFluxType=ConvectiveHeatFlux`；外表面可用 `selection: "all"`（必须真正调用 `selection().all()`）
 - **Radiation**：辐射，参数 epsilon（发射率）
+- **稳态可解性**：有热通量输入时必须有对流/温度边界把热量带走；仅有 HeatFlux、对流未挂上时，常见「找不到解 / 相对残差远大于容差」
 
 ### 结构力学 (structural)
 - **FixedConstraint**：固定约束

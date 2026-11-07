@@ -20,6 +20,16 @@ from agent.schemas.task import ExecutionStep, GlobalDefinitionPlan, ReActTaskPla
 
 logger = get_logger(__name__)
 GLOBAL_NAME_RE = re.compile(r"^[A-Za-z_]\w*$")
+# 分阶段落盘后缀；成功后只保留 {base}_latest.mph
+_STAGE_MODEL_SUFFIXES = (
+    "_geometry",
+    "_global",
+    "_material",
+    "_physics",
+    "_mesh",
+    "_study",
+    "_solve",
+)
 
 
 class ActionExecutor:
@@ -96,10 +106,62 @@ class ActionExecutor:
         base_dir, base_name = self._stage_base(plan)
         latest = base_dir / f"{base_name}_latest.mph"
         try:
-            shutil.copy2(str(src), str(latest))
+            if src.resolve() != latest.resolve():
+                shutil.copy2(str(src), str(latest))
             plan.model_path = str(latest.resolve())
         except Exception as e:
             logger.warning("更新 _latest 副本失败: %s", e)
+
+    def cleanup_stage_models(self, plan: ReActTaskPlan) -> Dict[str, Any]:
+        """
+        删除同 base 的过程模型（geometry/material/.../solve），只保留 *_latest.mph。
+        求解成功或整轮成功结束时调用。
+        """
+        if not getattr(plan, "model_path", None):
+            return {"removed": [], "kept": None}
+        # 先确保 latest 是当前内容
+        self._update_latest(plan)
+        base_dir, base_name = self._stage_base(plan)
+        latest = (base_dir / f"{base_name}_latest.mph").resolve()
+        if not latest.exists():
+            return {"removed": [], "kept": None}
+
+        removed: list[str] = []
+        for suffix in _STAGE_MODEL_SUFFIXES:
+            for candidate in (
+                base_dir / f"{base_name}{suffix}.mph",
+                base_dir / f"{base_name}{suffix}.mph.lock",
+            ):
+                try:
+                    if not candidate.exists():
+                        continue
+                    if candidate.resolve() == latest:
+                        continue
+                    candidate.unlink()
+                    removed.append(str(candidate))
+                except Exception as e:
+                    logger.warning("删除过程模型失败 %s: %s", candidate, e)
+
+        # 顺带清掉孤立 .lock
+        lock = Path(str(latest) + ".lock")
+        try:
+            if lock.exists():
+                lock.unlink()
+                removed.append(str(lock))
+        except Exception:
+            pass
+
+        plan.model_path = str(latest)
+        if self._context_manager and hasattr(self._context_manager, "set_latest_model"):
+            try:
+                self._context_manager.set_latest_model(str(latest))
+            except Exception:
+                pass
+        if removed:
+            logger.info(
+                "已清理 %d 个过程模型，保留: %s", len(removed), latest
+            )
+        return {"removed": removed, "kept": str(latest)}
 
     def _emit_step_start(self, step_type: str, message: str = "") -> None:
         """向交互板块发送步骤开始事件，便于逐步渲染。"""
@@ -142,6 +204,8 @@ class ActionExecutor:
             "import_geometry": self.execute_import_geometry,
             "create_selection": self.execute_create_selection,
             "export_results": self.execute_export_results,
+            "evaluate_results": self.execute_evaluate_results,
+            "set_parameters": self.execute_set_parameters,
             "call_official_api": self.execute_call_official_api,
             "retry": self.execute_retry,
             "skip": self.execute_skip,
@@ -456,9 +520,9 @@ class ActionExecutor:
     def execute_update_material_property(
         self, plan: ReActTaskPlan, step: ExecutionStep, thought: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """仅更新已有材料的属性（如导热系数 k），用于修复「未定义固体1所需的材料属性k」等错误。"""
+        """仅更新已有材料属性（k / E / nu 等），用于修复求解缺材料属性错误。"""
         logger.info("执行更新材料属性...")
-        self._emit_step_start("更新材料属性", "正在为已有材料补充属性（如 k）...")
+        self._emit_step_start("更新材料属性", "正在为已有材料补充属性（如 k / E / nu）...")
 
         if not plan.model_path:
             return {"status": "error", "message": "模型文件不存在，请先执行几何建模"}
@@ -466,7 +530,18 @@ class ActionExecutor:
         params = thought.get("parameters", {}) or step.parameters or {}
         properties = dict(params.get("properties") or {})
         if not properties:
-            properties = {"k": params.get("k", DEFAULT_THERMAL_K_SOLID)}
+            if params.get("nu") is not None or params.get("E") is not None:
+                from agent.executor.java_api_controller import (
+                    DEFAULT_POISSONS_RATIO,
+                    DEFAULT_YOUNGS_MODULUS_SOLID,
+                )
+
+                properties = {
+                    "E": params.get("E", DEFAULT_YOUNGS_MODULUS_SOLID),
+                    "nu": params.get("nu", DEFAULT_POISSONS_RATIO),
+                }
+            else:
+                properties = {"k": params.get("k", DEFAULT_THERMAL_K_SOLID)}
         property_group = (params.get("property_group") or "Def").strip() or "Def"
 
         material_names = list(params.get("material_names") or [])
@@ -696,28 +771,107 @@ class ActionExecutor:
         if not plan.model_path:
             return {"status": "error", "message": "模型文件不存在"}
 
+        def _on_solve_progress(payload: Dict[str, Any]) -> None:
+            if not self._event_bus:
+                return
+            data = dict(payload or {})
+            compute = data.pop("compute", None)
+            try:
+                if compute:
+                    self._event_bus.emit_type(EventType.COMPUTE_BACKEND, compute)
+                self._event_bus.emit_type(EventType.SOLVE_PROGRESS, data)
+            except Exception:
+                pass
+
         try:
+            from agent.executor.compute_backend import detect_compute_backend
+
+            if self._event_bus:
+                self._event_bus.emit_type(
+                    EventType.COMPUTE_BACKEND, detect_compute_backend().to_dict()
+                )
+                self._event_bus.emit_type(
+                    EventType.SOLVE_PROGRESS,
+                    {
+                        "phase": "prepare",
+                        "percent": 0,
+                        "message": "准备求解…",
+                        "active": True,
+                    },
+                )
+
             controller = self._get_java_api_controller()
             save_to = self._stage_path(plan, "solve")
-            result = controller.solve(plan.model_path, save_to_path=save_to)
+            result = controller.solve(
+                plan.model_path,
+                save_to_path=save_to,
+                progress_callback=_on_solve_progress,
+            )
             if result.get("status") == "error":
                 msg = result.get("message", "求解失败")
                 return {"status": "error", "message": msg}
             plan.model_path = result.get("saved_path") or plan.model_path
-            self._update_latest(plan)
+            cleanup = self.cleanup_stage_models(plan)
+            model_path = plan.model_path
+            # 可选：用 MPh 做求解后物理量轻量验收（不阻断主成功路径）
+            verify = None
+            try:
+                from agent.executor import mph_backend
+
+                params = thought.get("parameters", {}) or step.parameters or {}
+                if mph_backend.should_use_mph() and model_path:
+                    exprs = params.get("verify_expressions") or params.get("expressions")
+                    if isinstance(exprs, str):
+                        exprs = [exprs]
+                    verify = mph_backend.verify_after_solve(
+                        model_path,
+                        expressions=list(exprs) if exprs else None,
+                    )
+            except Exception as ve:
+                logger.debug("MPh 求解验收跳过: %s", ve)
+            success_msg = f"求解成功。模型位置：{model_path}" if model_path else "求解成功"
             if self._context_manager:
                 self._context_manager.append_operation(
-                    "求解", "求解成功", "success", plan.model_path
+                    "求解", success_msg, "success", model_path
                 )
-            self._emit_step_end("求解", "求解成功", solve_info=result)
+            self._emit_step_end(
+                "求解",
+                success_msg,
+                solve_info=result,
+                model_path=model_path,
+                cleaned_stage_models=cleanup.get("removed") or [],
+            )
             ui = {
                 "action": "求解模型",
-                "detail": "运行研究序列并求解模型",
-                "target": "研究: 自动选择第一个研究节点",
+                "detail": f"求解成功，模型已保存：{model_path}" if model_path else "运行研究序列并求解模型",
+                "target": model_path or "研究: 自动选择第一个研究节点",
             }
-            return {"status": "success", "message": "求解成功", "solve_info": result, "ui": ui}
+            out: Dict[str, Any] = {
+                "status": "success",
+                "message": success_msg,
+                "model_path": model_path,
+                "saved_path": model_path,
+                "solve_info": result,
+                "ui": ui,
+            }
+            if verify:
+                out["mph_verify"] = verify
+            return out
         except Exception as e:
             logger.error(f"求解失败: {e}")
+            if self._event_bus:
+                try:
+                    self._event_bus.emit_type(
+                        EventType.SOLVE_PROGRESS,
+                        {
+                            "phase": "error",
+                            "percent": 0,
+                            "message": f"求解失败: {e}",
+                            "active": False,
+                        },
+                    )
+                except Exception:
+                    pass
             return {"status": "error", "message": f"求解失败: {e}"}
 
     # ===== Geometry IO / Selection / Postprocess =====
@@ -778,7 +932,7 @@ class ActionExecutor:
     def execute_export_results(
         self, plan: ReActTaskPlan, step: ExecutionStep, thought: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """导出结果图或数据。"""
+        """导出结果图或数据。CSV/数据优先尝试可选 MPh 后端，失败再回退 Java API。"""
         if not plan.model_path:
             return {"status": "error", "message": "模型文件不存在"}
         params = thought.get("parameters", {}) or step.parameters
@@ -787,6 +941,43 @@ class ActionExecutor:
             return {"status": "error", "message": "缺少 out_path 参数"}
         self._emit_step_start("结果导出", "正在导出结果...")
         export_type = (params.get("export_type") or "image").lower()
+        prefer_mph = str(params.get("backend") or "").lower() in ("mph", "auto")
+        is_data_export = (
+            export_type in ("data", "csv", "table", "numeric")
+            or bool(params.get("dataset"))
+            or bool(params.get("table_tag"))
+            or str(out_path).lower().endswith(".csv")
+        )
+
+        if is_data_export or prefer_mph:
+            try:
+                from agent.executor import mph_backend
+
+                force = True if str(params.get("backend") or "").lower() == "mph" else None
+                if mph_backend.should_use_mph(force=force):
+                    mph_result = mph_backend.export_data(
+                        plan.model_path,
+                        out_path,
+                        node=params.get("node") or params.get("export_node"),
+                        dataset=params.get("dataset") or params.get("table_tag"),
+                    )
+                    if mph_result.get("status") == "success":
+                        self._emit_step_end(
+                            "结果导出",
+                            mph_result.get("message", "MPh 导出成功"),
+                            path=out_path,
+                            backend="mph",
+                        )
+                        return {
+                            "status": "success",
+                            "message": mph_result.get("message"),
+                            "path": out_path,
+                            "backend": "mph",
+                        }
+                    logger.info("MPh 导出未成功，回退 Java API: %s", mph_result.get("message"))
+            except Exception as e:
+                logger.info("MPh 导出跳过，回退 Java API: %s", e)
+
         if export_type == "data" or params.get("dataset"):
             controller = self._get_java_api_controller()
             result = controller.export_data(
@@ -806,6 +997,10 @@ class ActionExecutor:
                         "dataset",
                         "plot_group_tag",
                         "data_type",
+                        "backend",
+                        "node",
+                        "export_node",
+                        "table_tag",
                     )
                 },
             )
@@ -824,13 +1019,137 @@ class ActionExecutor:
                     k: v
                     for k, v in params.items()
                     if k
-                    not in ("out_path", "output_path", "path", "plot_group_tag", "width", "height")
+                    not in (
+                        "out_path",
+                        "output_path",
+                        "path",
+                        "plot_group_tag",
+                        "width",
+                        "height",
+                        "backend",
+                    )
                 },
             )
         if result.get("status") == "error":
             return result
-        self._emit_step_end("结果导出", result.get("message", "导出成功"), path=out_path)
-        return {"status": "success", "message": result.get("message"), "path": out_path}
+        self._emit_step_end(
+            "结果导出",
+            result.get("message", "导出成功"),
+            path=out_path,
+            backend="java_api",
+        )
+        return {
+            "status": "success",
+            "message": result.get("message"),
+            "path": out_path,
+            "backend": "java_api",
+        }
+
+    def execute_evaluate_results(
+        self, plan: ReActTaskPlan, step: ExecutionStep, thought: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """对已求解模型做表达式求值（优先 MPh）。"""
+        if not plan.model_path:
+            return {"status": "error", "message": "模型文件不存在"}
+        params = thought.get("parameters", {}) or step.parameters or {}
+        expression = (
+            params.get("expression")
+            or params.get("expr")
+            or params.get("quantity")
+            or ""
+        )
+        self._emit_step_start("结果求值", f"求值: {expression or '(默认验收表达式)'}...")
+        try:
+            from agent.executor import mph_backend
+
+            if not mph_backend.should_use_mph(
+                force=True if str(params.get("backend") or "").lower() == "mph" else None
+            ):
+                return {
+                    "status": "error",
+                    "message": "未启用/未安装 MPh。请执行 uv sync --extra mph，并设置 MPH_BACKEND=auto",
+                }
+            if expression:
+                result = mph_backend.evaluate(
+                    plan.model_path,
+                    str(expression),
+                    dataset=params.get("dataset"),
+                    unit=params.get("unit"),
+                )
+            else:
+                exprs = params.get("expressions")
+                if isinstance(exprs, str):
+                    exprs = [exprs]
+                result = mph_backend.verify_after_solve(
+                    plan.model_path,
+                    expressions=list(exprs) if exprs else None,
+                )
+            if result.get("status") == "error":
+                return result
+            self._emit_step_end(
+                "结果求值",
+                result.get("message", "求值完成"),
+                backend="mph",
+                value=result.get("value"),
+            )
+            return {
+                "status": "success" if result.get("status") != "warning" else "warning",
+                "message": result.get("message"),
+                "value": result.get("value"),
+                "backend": "mph",
+                "result": result,
+            }
+        except Exception as e:
+            logger.error("evaluate_results 失败: %s", e)
+            return {"status": "error", "message": f"evaluate_results 失败: {e}"}
+
+    def execute_set_parameters(
+        self, plan: ReActTaskPlan, step: ExecutionStep, thought: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """批量写入全局参数（优先 MPh，便于参数化扫描改参）。"""
+        if not plan.model_path:
+            return {"status": "error", "message": "模型文件不存在"}
+        params = thought.get("parameters", {}) or step.parameters or {}
+        mapping = params.get("parameters") or params.get("values") or params.get("map")
+        if not isinstance(mapping, dict) or not mapping:
+            return {
+                "status": "error",
+                "message": "set_parameters 需要 parameters 字典，例如 {\"t_fin\": \"0.002[m]\"}",
+            }
+        self._emit_step_start("参数设置", f"写入 {len(mapping)} 个全局参数...")
+        try:
+            from agent.executor import mph_backend
+
+            if not mph_backend.should_use_mph(
+                force=True if str(params.get("backend") or "").lower() == "mph" else None
+            ):
+                return {
+                    "status": "error",
+                    "message": "未启用/未安装 MPh。请执行 uv sync --extra mph",
+                }
+            save_to = params.get("save_path") or self._stage_path(plan, "latest")
+            result = mph_backend.set_parameters(
+                plan.model_path, dict(mapping), save_path=save_to
+            )
+            if result.get("status") == "error":
+                return result
+            if result.get("saved_path"):
+                plan.model_path = result["saved_path"]
+                self._update_latest(plan)
+            self._emit_step_end(
+                "参数设置",
+                result.get("message", "参数已更新"),
+                backend="mph",
+            )
+            return {
+                "status": "success",
+                "message": result.get("message"),
+                "parameters": result.get("parameters"),
+                "backend": "mph",
+            }
+        except Exception as e:
+            logger.error("set_parameters 失败: %s", e)
+            return {"status": "error", "message": f"set_parameters 失败: {e}"}
 
     # ===== Official Java API 调用（高级）=====
 

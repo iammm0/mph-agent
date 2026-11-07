@@ -124,6 +124,11 @@ def main() -> None:
         sys.stdout.write('{"_ready":true}\n')
         sys.stdout.flush()
 
+        import os
+
+        # 须在 import litellm 之前：避免拉取 GitHub model cost map 失败刷屏
+        os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+
         from dotenv import load_dotenv
         from agent.utils.java_runtime import ensure_java_home_from_venv
 

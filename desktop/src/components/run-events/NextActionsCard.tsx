@@ -10,20 +10,20 @@ export interface NextActionItem {
 function parseActions(data: Record<string, unknown> | undefined): NextActionItem[] {
   const raw = data?.actions;
   if (!Array.isArray(raw)) return [];
-  return raw
-    .map((item) => {
-      if (!item || typeof item !== "object") return null;
-      const row = item as Record<string, unknown>;
-      const label = String(row.label ?? "").trim();
-      const prompt = String(row.prompt ?? "").trim();
-      if (!label || !prompt) return null;
-      return {
-        id: String(row.id ?? "").trim() || undefined,
-        label,
-        prompt,
-      };
-    })
-    .filter((item): item is NextActionItem => item != null);
+  const actions: NextActionItem[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const label = String(row.label ?? "").trim();
+    const prompt = String(row.prompt ?? "").trim();
+    if (!label || !prompt) continue;
+    actions.push({
+      id: String(row.id ?? "").trim() || undefined,
+      label,
+      prompt,
+    });
+  }
+  return actions;
 }
 
 export function extractNextActionsFromEvents(events: RunEvent[] | undefined): {

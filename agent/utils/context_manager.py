@@ -23,12 +23,27 @@ _active_workspace_dir: ContextVar[Optional[str]] = ContextVar(
 )
 
 WORKSPACE_SUBDIRS = ("context", "models", "plans")
+_active_conversation_id: ContextVar[Optional[str]] = ContextVar(
+    "mph_active_conversation_id",
+    default=None,
+)
 
 
 def set_active_workspace_dir(path: Optional[str]) -> None:
     """当前请求的工作空间。对话产物和过程文件都落在这个目录下。"""
     text = (path or "").strip()
     _active_workspace_dir.set(text or None)
+
+
+def set_active_conversation_id(conversation_id: Optional[str]) -> None:
+    """当前 agent 任务 id；同一工作空间下可并行多个任务。"""
+    raw = (conversation_id or "").strip()
+    _active_conversation_id.set(raw or None)
+
+
+def sanitize_conversation_id(conversation_id: Optional[str]) -> str:
+    raw = (conversation_id or "default").strip() or "default"
+    return re.sub(r"[^A-Za-z0-9._-]", "_", raw) or "default"
 
 
 def ensure_workspace_layout(root: Path | str) -> Path:
@@ -44,13 +59,72 @@ def conversation_storage_dir(
     conversation_id: Optional[str] = None,
     workspace_dir: Optional[str] = None,
 ) -> Path:
-    """有工作空间时返回 `<workspace>/context`；否则回退到 `.context/<id>`。"""
+    """工作空间内返回 `<workspace>/context/tasks/<id>`；否则回退 `.context/<id>`。"""
     selected = workspace_dir if workspace_dir is not None else _active_workspace_dir.get()
+    cid = conversation_id if conversation_id is not None else _active_conversation_id.get()
     if selected and str(selected).strip():
-        return ensure_workspace_layout(selected) / "context"
-    raw = (conversation_id or "default").strip() or "default"
-    name = re.sub(r"[^A-Za-z0-9._-]", "_", raw) or "default"
-    return get_install_dir() / ".context" / name
+        root = ensure_workspace_layout(selected)
+        return root / "context" / "tasks" / sanitize_conversation_id(cid)
+    return get_install_dir() / ".context" / sanitize_conversation_id(cid)
+
+
+def _migrate_legacy_workspace_into_task(workspace: Path, task_id: str) -> None:
+    """把旧版共享的 context/models/plans 根文件迁到 tasks/<id>/，便于多任务共存。"""
+    cid = sanitize_conversation_id(task_id)
+    tasks_ctx = workspace / "context" / "tasks"
+    if (tasks_ctx / cid).exists():
+        return
+    legacy_markers = (
+        workspace / "context" / "history.json",
+        workspace / "context" / "operations.md",
+        workspace / "context" / "discussion.json",
+        workspace / "plans" / "plan.json",
+    )
+    if not any(p.exists() for p in legacy_markers):
+        return
+    # 已有其他 task 目录则不自动搬迁，避免误伤
+    if tasks_ctx.exists() and any(tasks_ctx.iterdir()):
+        return
+
+    dest_ctx = tasks_ctx / cid
+    dest_models = workspace / "models" / "tasks" / cid
+    dest_plans = workspace / "plans" / "tasks" / cid
+    dest_ctx.mkdir(parents=True, exist_ok=True)
+    dest_models.mkdir(parents=True, exist_ok=True)
+    dest_plans.mkdir(parents=True, exist_ok=True)
+
+    ctx_root = workspace / "context"
+    for child in list(ctx_root.iterdir()):
+        if child.name == "tasks":
+            continue
+        target = dest_ctx / child.name
+        try:
+            if not target.exists():
+                shutil.move(str(child), str(target))
+        except Exception as e:
+            logger.warning("迁移 context/%s 失败: %s", child.name, e)
+
+    models_root = workspace / "models"
+    for child in list(models_root.iterdir()):
+        if child.name == "tasks":
+            continue
+        target = dest_models / child.name
+        try:
+            if not target.exists():
+                shutil.move(str(child), str(target))
+        except Exception as e:
+            logger.warning("迁移 models/%s 失败: %s", child.name, e)
+
+    plans_root = workspace / "plans"
+    for child in list(plans_root.iterdir()):
+        if child.name == "tasks":
+            continue
+        target = dest_plans / child.name
+        try:
+            if not target.exists():
+                shutil.move(str(child), str(target))
+        except Exception as e:
+            logger.warning("迁移 plans/%s 失败: %s", child.name, e)
 
 
 @dataclass
@@ -82,10 +156,10 @@ class ContextSummary:
 class ContextManager:
     """Persistence under workspace layout or legacy `.context/<conversation_id>/`.
 
-    Workspace root:
-      context/  history、discussion、operations、dialog_logs
-      models/   mph 与结果
-      plans/    plan.json、plan_readable.md
+    Workspace root（同一目录可挂多个 agent 任务）:
+      context/tasks/<id>/  history、discussion、operations、dialog_logs
+      models/tasks/<id>/   mph 与结果
+      plans/tasks/<id>/    plan.json、plan_readable.md
     """
 
     def __init__(
@@ -94,15 +168,31 @@ class ContextManager:
         conversation_id: Optional[str] = None,
         workspace_root: Optional[Path | str] = None,
     ):
+        self.conversation_id = sanitize_conversation_id(conversation_id) if conversation_id else None
         if workspace_root is not None:
             self.workspace_root = ensure_workspace_layout(workspace_root)
-            self.context_dir = self.workspace_root / "context"
-            self.models_dir = self.workspace_root / "models"
-            self.plans_dir = self.workspace_root / "plans"
+            cid = self.conversation_id or sanitize_conversation_id(
+                _active_conversation_id.get()
+            )
+            self.conversation_id = cid
+            _migrate_legacy_workspace_into_task(self.workspace_root, cid)
+            self.context_dir = self.workspace_root / "context" / "tasks" / cid
+            self.models_dir = self.workspace_root / "models" / "tasks" / cid
+            self.plans_dir = self.workspace_root / "plans" / "tasks" / cid
         elif context_dir is not None:
             self.context_dir = Path(context_dir)
-            # conversation_storage_dir 已指向 workspace/context 时，回推根目录
-            if self.context_dir.name == "context" and (self.context_dir.parent / "models").exists():
+            # context/tasks/<id> → 回推工作空间根
+            if (
+                self.context_dir.parent.name == "tasks"
+                and self.context_dir.parent.parent.name == "context"
+            ):
+                self.workspace_root = self.context_dir.parent.parent.parent
+                ensure_workspace_layout(self.workspace_root)
+                cid = self.context_dir.name
+                self.conversation_id = cid
+                self.models_dir = self.workspace_root / "models" / "tasks" / cid
+                self.plans_dir = self.workspace_root / "plans" / "tasks" / cid
+            elif self.context_dir.name == "context" and (self.context_dir.parent / "models").exists():
                 self.workspace_root = self.context_dir.parent
                 self.models_dir = self.workspace_root / "models"
                 self.plans_dir = self.workspace_root / "plans"
@@ -118,7 +208,9 @@ class ContextManager:
         else:
             self.workspace_root = None
             base = get_install_dir() / ".context"
-            self.context_dir = base / (conversation_id or "default")
+            cid = self.conversation_id or "default"
+            self.conversation_id = cid
+            self.context_dir = base / cid
             self.models_dir = self.context_dir
             self.plans_dir = self.context_dir
 
@@ -993,7 +1085,8 @@ class ContextManager:
             except Exception:
                 pass
 
-    def delete_conversation_and_models(self) -> List[str]:
+    def delete_conversation_and_models(self, *, wipe_workspace: bool = False) -> List[str]:
+        """删除当前 agent 任务产物；wipe_workspace=True 时清空整个工作空间子目录。"""
         deleted_paths: List[str] = []
         for entry in self.load_history():
             path = entry.get("model_path")
@@ -1006,17 +1099,26 @@ class ContextManager:
                     deleted_paths.append(path)
                 except Exception as e:
                     logger.warning("Failed to delete model %s: %s", path, e)
-        # 工作空间只清理固定子目录，不删除用户根目录本身
+
         if self.workspace_root is not None:
-            for name in WORKSPACE_SUBDIRS:
-                target = self.workspace_root / name
+            if wipe_workspace:
+                for name in WORKSPACE_SUBDIRS:
+                    target = self.workspace_root / name
+                    if target.exists():
+                        deleted_paths.append(str(target))
+                        shutil.rmtree(target, ignore_errors=True)
+                return deleted_paths
+            # 仅删本任务目录，保留同工作空间其他 agent 任务
+            for target in (self.context_dir, self.models_dir, self.plans_dir):
                 if target.exists():
                     deleted_paths.append(str(target))
                     shutil.rmtree(target, ignore_errors=True)
             return deleted_paths
+
         self.clear_history()
         if self.context_dir.exists():
             shutil.rmtree(self.context_dir, ignore_errors=True)
+            deleted_paths.append(str(self.context_dir))
         return deleted_paths
 
     def get_stats(self) -> Dict[str, Any]:
@@ -1113,17 +1215,21 @@ def get_context_manager(
 ) -> ContextManager:
     """Get default manager or conversation-scoped manager.
 
-    workspace_dir 非空时使用固定子目录 layout：context/、models/、plans/。
+    同一 workspace_dir 下按 conversation_id 隔离到
+    context|models|plans/tasks/<id>/，支持多 agent 任务并行。
     """
 
     global _context_manager
     if workspace_dir is not None:
         set_active_workspace_dir(workspace_dir)
+    if conversation_id is not None:
+        set_active_conversation_id(conversation_id)
     selected = workspace_dir if workspace_dir is not None else _active_workspace_dir.get()
+    cid = conversation_id if conversation_id is not None else _active_conversation_id.get()
     if selected and str(selected).strip():
-        return ContextManager(workspace_root=selected)
-    if conversation_id:
-        return ContextManager(conversation_id=conversation_id)
+        return ContextManager(workspace_root=selected, conversation_id=cid)
+    if cid:
+        return ContextManager(conversation_id=cid)
     if _context_manager is None:
         _context_manager = ContextManager()
     return _context_manager

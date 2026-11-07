@@ -543,7 +543,9 @@ export function CaseLibraryPage() {
                 <button
                   type="button"
                   className="dialog-btn secondary"
-                  onClick={() => void handleCaseLink(selectedCase, "view")}
+                  onClick={() =>
+                    void openExternalPath(selectedCase.officialUrl, "已打开中文官方页")
+                  }
                 >
                   打开中文官方页
                 </button>

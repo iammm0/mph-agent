@@ -12,8 +12,11 @@ import { useBridge } from "../hooks/useBridge";
 import {
   API_CONFIG_UPDATED_EVENT,
   apiConfigToEnv,
+  COMPUTE_PREFERENCE_OPTIONS,
   getProviderConfig,
   loadApiConfig,
+  nextComputePreference,
+  normalizeComputePreference,
   saveApiConfig,
 } from "../lib/apiConfig";
 import { ModelPicker } from "./ModelPicker";
@@ -40,6 +43,58 @@ export function Prompt() {
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const workspaceWrapRef = useRef<HTMLDivElement>(null);
+
+  const computePref = normalizeComputePreference(apiConfig.compute_preference);
+  const computePrefMeta =
+    COMPUTE_PREFERENCE_OPTIONS.find((o) => o.id === computePref) ??
+    COMPUTE_PREFERENCE_OPTIONS[0];
+  const busy = state.busyConversationId != null;
+
+  const cycleComputePreference = useCallback(async () => {
+    if (busy) return;
+    const next = nextComputePreference(computePref);
+    const nextConfig = { ...apiConfig, compute_preference: next };
+    setApiConfig(nextConfig);
+    saveApiConfig(nextConfig);
+    const meta =
+      COMPUTE_PREFERENCE_OPTIONS.find((o) => o.id === next) ??
+      COMPUTE_PREFERENCE_OPTIONS[0];
+    dispatch({
+      type: "SET_COMPUTE_BACKEND",
+      mode: next === "cpu" ? "cpu" : state.computeBackend.gpuAvailable ? "gpu_standby" : "cpu",
+      label:
+        next === "cpu"
+          ? "仅 CPU（用户指定）"
+          : next === "gpu"
+            ? "优先 GPU（有卡则尝试）"
+            : state.computeBackend.gpuAvailable
+              ? "GPU 待命 · CPU 计算"
+              : "CPU 计算",
+      detail: meta.hint,
+    });
+    try {
+      await invoke("bridge_send", {
+        cmd: "config_save",
+        payload: {
+          config: {
+            COMSOL_COMPUTE_PREFERENCE: next,
+          },
+          conversation_id: state.currentConversationId,
+          workspace_dir: state.workspaceDir ?? undefined,
+        },
+      });
+    } catch {
+      // 本地已保存；bridge 未就绪时下次启动仍可读 .env / localStorage
+    }
+  }, [
+    apiConfig,
+    busy,
+    computePref,
+    dispatch,
+    state.computeBackend.gpuAvailable,
+    state.currentConversationId,
+    state.workspaceDir,
+  ]);
 
   const tokenStats = useMemo(() => {
     let prompt = 0;
@@ -136,15 +191,15 @@ export function Prompt() {
     }
   }, []);
 
-  const busy = state.busyConversationId != null;
   const deepseek = getProviderConfig(apiConfig, "deepseek");
   const currentConv = state.conversations.find(
     (c) => c.id === state.currentConversationId
   );
-  const workspaceLabel =
-    currentConv?.title?.trim() ||
-    folderName(state.workspaceDir) ||
-    "未选择工作空间";
+  const workspaceFolder = folderName(state.workspaceDir) || "未选择工作空间";
+  const taskTitle = currentConv?.title?.trim() || "Agent 任务";
+  const workspaceLabel = state.workspaceDir
+    ? `${workspaceFolder} · ${taskTitle}`
+    : "未选择工作空间";
 
   const selectModel = useCallback((model: string) => {
     const next = loadApiConfig();
@@ -245,10 +300,9 @@ export function Prompt() {
               ) : (
                 state.conversations.map((conv) => {
                   const selected = conv.id === state.currentConversationId;
-                  const label =
-                    conv.title?.trim() ||
-                    folderName(conv.workspaceDir) ||
-                    "工作空间";
+                  const ws = folderName(conv.workspaceDir);
+                  const task = conv.title?.trim() || "Agent 任务";
+                  const label = conv.workspaceDir ? `${ws} · ${task}` : task;
                   return (
                     <button
                       key={conv.id}
@@ -283,6 +337,43 @@ export function Prompt() {
         </div>
 
         <div className="composer-status__right">
+          {state.solveProgress.active && (
+            <span
+              className="composer-solve-progress"
+              title={state.solveProgress.message || "求解进行中"}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="composer-solve-progress__bar" aria-hidden>
+                <span
+                  className="composer-solve-progress__fill"
+                  style={{
+                    width: `${Math.max(4, Math.min(100, state.solveProgress.percent || 0))}%`,
+                  }}
+                />
+              </span>
+              <span className="composer-solve-progress__text">
+                {Math.round(state.solveProgress.percent || 0)}%
+                {state.solveProgress.message
+                  ? ` · ${state.solveProgress.message}`
+                  : " · 求解中"}
+              </span>
+            </span>
+          )}
+          <button
+            type="button"
+            className={`composer-compute-badge is-${state.computeBackend.mode} is-pref-${computePref}`}
+            title={`${computePrefMeta.hint}\n点击切换：自动 → 仅 CPU → 优先 GPU`}
+            disabled={busy}
+            onClick={() => void cycleComputePreference()}
+          >
+            <span className="composer-compute-badge__dot" aria-hidden />
+            <span className="composer-compute-badge__label">
+              {busy || state.solveProgress.active
+                ? state.computeBackend.label
+                : `计算 · ${computePrefMeta.label}`}
+            </span>
+          </button>
           <span
             className="composer-token-meter"
             title={

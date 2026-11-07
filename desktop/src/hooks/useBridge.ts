@@ -121,6 +121,47 @@ export function useBridge() {
           }
         }
 
+        if (payload.type === "compute_backend") {
+          const d = (payload.data ?? {}) as Record<string, unknown>;
+          const modeRaw = String(d.mode ?? "cpu");
+          const mode =
+            modeRaw === "gpu" || modeRaw === "gpu_standby" ? modeRaw : "cpu";
+          dispatch({
+            type: "SET_COMPUTE_BACKEND",
+            mode,
+            label: String(d.label ?? (mode === "gpu" ? "GPU 计算" : "CPU 计算")),
+            detail: String(d.detail ?? ""),
+            gpuAvailable: Boolean(d.gpu_available ?? d.gpuAvailable),
+            gpuName: String(d.gpu_name ?? d.gpuName ?? ""),
+          });
+        }
+
+        if (payload.type === "solve_progress") {
+          const d = (payload.data ?? {}) as Record<string, unknown>;
+          const percent = Number(d.percent);
+          dispatch({
+            type: "SET_SOLVE_PROGRESS",
+            active: d.active !== false && String(d.phase ?? "") !== "done",
+            percent: Number.isFinite(percent) ? percent : 0,
+            message: String(d.message ?? ""),
+            phase: String(d.phase ?? ""),
+          });
+          if (d.compute && typeof d.compute === "object") {
+            const c = d.compute as Record<string, unknown>;
+            const modeRaw = String(c.mode ?? "cpu");
+            const mode =
+              modeRaw === "gpu" || modeRaw === "gpu_standby" ? modeRaw : "cpu";
+            dispatch({
+              type: "SET_COMPUTE_BACKEND",
+              mode,
+              label: String(c.label ?? ""),
+              detail: String(c.detail ?? ""),
+              gpuAvailable: Boolean(c.gpu_available ?? c.gpuAvailable),
+              gpuName: String(c.gpu_name ?? c.gpuName ?? ""),
+            });
+          }
+        }
+
         if (payload.type !== "plan_end") return;
 
         const data = payload.data ?? {};

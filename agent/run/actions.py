@@ -477,9 +477,10 @@ def do_run(
                 finish_log(True, user_message, {"phase": "reorchestrate"})
                 return True, user_message, True
 
+            done_msg = f"求解成功。模型位置：{model_path}"
             context_manager.add_conversation(
                 user_input=user_input,
-                assistant_summary=f"模型已生成: {model_path}",
+                assistant_summary=done_msg,
                 plan={"architecture": "react"},
                 model_path=str(model_path),
                 success=True,
@@ -488,12 +489,11 @@ def do_run(
                 _update_memory_after_run(
                     conversation_id,
                     user_input,
-                    f"模型已生成: {model_path}",
+                    done_msg,
                     True,
                 )
-            msg = f"模型已生成: {model_path}"
-            finish_log(True, msg, {"model_path": str(model_path), "phase": "run"})
-            return True, msg, False
+            finish_log(True, done_msg, {"model_path": str(model_path), "phase": "run"})
+            return True, done_msg, False
         else:
             context = memory_context
             planner = get_agent(
@@ -719,6 +719,10 @@ def _discuss_llm_reply(
         on_chunk=lambda chunk: event_bus.emit_type(
             EventType.LLM_STREAM_CHUNK,
             {"phase": "discussion", "chunk": chunk},
+        ),
+        on_reasoning_chunk=lambda chunk: event_bus.emit_type(
+            EventType.LLM_STREAM_CHUNK,
+            {"phase": "thinking", "kind": "reasoning", "chunk": chunk},
         ),
     )
 
@@ -1900,10 +1904,11 @@ def do_config_save(env_updates: Optional[dict] = None) -> Tuple[bool, str]:
         "OPENAI_COMPATIBLE_MODEL",
         "OLLAMA_URL",
         "OLLAMA_MODEL",
-        "COMSOL_JAR_PATH",
-        "JAVA_HOME",
-        "MODEL_OUTPUT_DIR",
-    ]
+            "COMSOL_JAR_PATH",
+            "JAVA_HOME",
+            "MODEL_OUTPUT_DIR",
+            "COMSOL_COMPUTE_PREFERENCE",
+        ]
     env_updates = dict(env_updates)
     # 读取已有行
     if env_path.exists():
@@ -1934,6 +1939,14 @@ def do_config_save(env_updates: Optional[dict] = None) -> Tuple[bool, str]:
         env_path.parent.mkdir(parents=True, exist_ok=True)
         env_path.write_text("\n".join(lines_out) + "\n", encoding="utf-8")
         reload_settings()
+        pref = env_updates.get("COMSOL_COMPUTE_PREFERENCE")
+        if pref is not None:
+            try:
+                from agent.executor.compute_backend import set_compute_preference
+
+                set_compute_preference(str(pref))
+            except Exception:
+                pass
         return True, "配置已保存并已加载，将应用于后续 mph-agent 调用"
     except Exception as e:
         return False, f"写入 .env 失败: {e}"

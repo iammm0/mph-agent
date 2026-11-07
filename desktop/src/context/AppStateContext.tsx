@@ -80,10 +80,27 @@ interface AppState {
   lastPlanInput: string | null;
   /** 探讨阶段讨论卡已 finalized，可提示用户进入规划 */
   discussionReadyForPlan: boolean;
+  /** 计算后端：CPU / GPU / GPU 待命 */
+  computeBackend: {
+    mode: "cpu" | "gpu" | "gpu_standby";
+    label: string;
+    detail: string;
+    gpuAvailable: boolean;
+    gpuName: string;
+  };
+  /** 求解实时进度（对话框底部展示） */
+  solveProgress: {
+    active: boolean;
+    percent: number;
+    message: string;
+    phase: string;
+  };
 }
 
 type AppAction =
   | { type: "NEW_CONVERSATION"; workspaceDir: string; title?: string }
+  /** 在已有工作空间下新建另一个 Agent 任务（共享目录，隔离 context/tasks） */
+  | { type: "NEW_AGENT_TASK"; workspaceDir?: string; title?: string }
   | { type: "SWITCH_CONVERSATION"; id: string }
   | { type: "SET_CONVERSATION_TITLE"; id: string; title: string }
   | { type: "SET_CONVERSATION_WORKSPACE_DIR"; id: string; path: string }
@@ -128,7 +145,37 @@ type AppAction =
   | { type: "CLEAR_PLAN_QUESTIONS" }
   | { type: "SET_LAST_PLAN_INPUT"; input: string | null }
   | { type: "SET_DISCUSSION_READY_FOR_PLAN"; value: boolean }
+  | {
+      type: "SET_COMPUTE_BACKEND";
+      mode?: "cpu" | "gpu" | "gpu_standby";
+      label?: string;
+      detail?: string;
+      gpuAvailable?: boolean;
+      gpuName?: string;
+    }
+  | {
+      type: "SET_SOLVE_PROGRESS";
+      active?: boolean;
+      percent?: number;
+      message?: string;
+      phase?: string;
+    }
   | { type: "HYDRATE"; state: Partial<AppState> };
+
+const DEFAULT_COMPUTE_BACKEND: AppState["computeBackend"] = {
+  mode: "cpu",
+  label: "CPU 计算",
+  detail: "默认使用 CPU 多核求解；COMSOL GPU 仅覆盖部分场景。",
+  gpuAvailable: false,
+  gpuName: "",
+};
+
+const DEFAULT_SOLVE_PROGRESS: AppState["solveProgress"] = {
+  active: false,
+  percent: 0,
+  message: "",
+  phase: "",
+};
 
 function workspaceDirOf(
   conversations: Conversation[],
@@ -187,6 +234,8 @@ function getInitialState(): AppState {
       pendingPlanQuestions: null,
       lastPlanInput: null,
       discussionReadyForPlan: false,
+      computeBackend: { ...DEFAULT_COMPUTE_BACKEND },
+      solveProgress: { ...DEFAULT_SOLVE_PROGRESS },
     };
   }
 
@@ -212,6 +261,8 @@ function getInitialState(): AppState {
     pendingPlanQuestions: null,
     lastPlanInput: null,
     discussionReadyForPlan: false,
+    computeBackend: { ...DEFAULT_COMPUTE_BACKEND },
+    solveProgress: { ...DEFAULT_SOLVE_PROGRESS },
   };
 }
 
@@ -222,8 +273,39 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case "NEW_CONVERSATION": {
       const workspaceDir = action.workspaceDir.trim();
       if (!workspaceDir) return state;
-      const folderName = workspaceDir.split(/[/\\]/).filter(Boolean).pop() || "工作空间";
-      const title = action.title?.trim() || folderName;
+      const title = action.title?.trim() || "Agent 任务 1";
+      const conv: Conversation = {
+        id: genId(),
+        title,
+        createdAt: Date.now(),
+        workspaceDir,
+        groupId: null,
+      };
+      return {
+        ...state,
+        conversations: [conv, ...state.conversations],
+        currentConversationId: conv.id,
+        workspaceDir,
+        messagesByConversation: {
+          ...state.messagesByConversation,
+          [conv.id]: [],
+        },
+        discussionReadyForPlan: false,
+        view: "session",
+      };
+    }
+    case "NEW_AGENT_TASK": {
+      const workspaceDir = (
+        action.workspaceDir?.trim() ||
+        state.workspaceDir ||
+        ""
+      ).trim();
+      if (!workspaceDir) return state;
+      const siblings = state.conversations.filter(
+        (c) => (c.workspaceDir || "").trim() === workspaceDir
+      );
+      const title =
+        action.title?.trim() || `Agent 任务 ${siblings.length + 1}`;
       const conv: Conversation = {
         id: genId(),
         title,
@@ -371,13 +453,23 @@ function appReducer(state: AppState, action: AppAction): AppState {
       const prev = state.messagesByConversation[conversationId] ?? [];
       const last = prev[prev.length - 1];
       if (!last || last.role !== "assistant") return state;
-      // 从 run_end 或任意含 model_path 的事件取最终模型路径，保证错误/中止时也能展示打开与预览
+      // 从 run_end / step_end / exec_result 取最终模型路径，保证成功时展示位置与打开入口
       let modelPath: string | null | undefined = last.modelPath;
       const events = last.events ?? [];
       for (let i = events.length - 1; i >= 0; i--) {
         const e = events[i];
-        const path = e?.data?.model_path;
-        if (typeof path === "string" && path) {
+        const d = e?.data;
+        const path =
+          (typeof d?.model_path === "string" && d.model_path) ||
+          (typeof d?.saved_path === "string" && d.saved_path) ||
+          (typeof (d?.result as { model_path?: unknown } | undefined)?.model_path ===
+            "string" &&
+            (d?.result as { model_path?: string }).model_path) ||
+          (typeof (d?.result as { saved_path?: unknown } | undefined)?.saved_path ===
+            "string" &&
+            (d?.result as { saved_path?: string }).saved_path) ||
+          null;
+        if (path) {
           modelPath = path;
           break;
         }
@@ -436,7 +528,38 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case "SET_EXEC_CODE_ONLY":
       return { ...state, execCodeOnly: action.value };
     case "SET_BUSY_CONVERSATION":
-      return { ...state, busyConversationId: action.conversationId };
+      return {
+        ...state,
+        busyConversationId: action.conversationId,
+        ...(action.conversationId == null
+          ? { solveProgress: { ...DEFAULT_SOLVE_PROGRESS } }
+          : {}),
+      };
+    case "SET_COMPUTE_BACKEND":
+      return {
+        ...state,
+        computeBackend: {
+          mode: action.mode ?? state.computeBackend.mode,
+          label: action.label ?? state.computeBackend.label,
+          detail: action.detail ?? state.computeBackend.detail,
+          gpuAvailable:
+            action.gpuAvailable ?? state.computeBackend.gpuAvailable,
+          gpuName: action.gpuName ?? state.computeBackend.gpuName,
+        },
+      };
+    case "SET_SOLVE_PROGRESS":
+      return {
+        ...state,
+        solveProgress: {
+          active: action.active ?? state.solveProgress.active,
+          percent:
+            typeof action.percent === "number"
+              ? Math.max(0, Math.min(100, action.percent))
+              : state.solveProgress.percent,
+          message: action.message ?? state.solveProgress.message,
+          phase: action.phase ?? state.solveProgress.phase,
+        },
+      };
     case "SET_EDITING_DRAFT":
       return {
         ...state,
@@ -477,6 +600,14 @@ function appReducer(state: AppState, action: AppAction): AppState {
         next.settingsTab = mapped;
       }
       next.settingsTab = normalizeSettingsTab(next.settingsTab);
+      next.computeBackend = {
+        ...DEFAULT_COMPUTE_BACKEND,
+        ...(next.computeBackend ?? {}),
+      };
+      next.solveProgress = {
+        ...DEFAULT_SOLVE_PROGRESS,
+        ...(next.solveProgress ?? {}),
+      };
       return next;
     }
     default:

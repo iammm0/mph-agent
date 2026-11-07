@@ -40,6 +40,10 @@ class EventType(str, Enum):
     TOKEN_BUDGET = "token_budget"
     # 单次 LLM 调用的实际 token 用量（优先 API usage；无则估算）
     TOKEN_USAGE = "token_usage"
+    # 计算后端状态：CPU / GPU / GPU 待命
+    COMPUTE_BACKEND = "compute_backend"
+    # 求解实时进度（percent 0-100 + message）
+    SOLVE_PROGRESS = "solve_progress"
     PLAN_RUNTIME_SYNC = "plan_runtime_sync"
     ASK_USER_RESOLVED = "ask_user_resolved"
     WORKTREE_ENTERED = "worktree_entered"

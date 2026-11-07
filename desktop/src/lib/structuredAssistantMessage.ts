@@ -49,7 +49,7 @@ export function parseStructuredAssistantText(raw: string): StructuredAssistantPa
 
   const text =
     messageStr ||
-    (modelPath ? "模型文件已更新，可使用下方按钮打开所在目录。" : "操作已完成");
+    (modelPath ? `求解成功。模型位置：${modelPath}` : "操作已完成");
 
   return { text, modelPath };
 }

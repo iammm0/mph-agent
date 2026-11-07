@@ -62,8 +62,11 @@ export default defineConfig(async () => ({
   server: {
     port: 1420,
     strictPort: true,
-    host: host || false,
-    hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
+    // Windows WebView2 常把 localhost 解析到 127.0.0.1；若只绑 [::1] 会白屏。
+    host: host || "127.0.0.1",
+    hmr: host
+      ? { protocol: "ws", host, port: 1421 }
+      : { protocol: "ws", host: "127.0.0.1", port: 1420 },
     watch: {
       ignored: ["**/src-tauri/**"],
     },

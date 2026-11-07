@@ -51,12 +51,12 @@ export type DialogType =
   | "api"
   | "planQuestions";
 
-/** 会话摘要；一项会话对应一个本地工作空间根目录 */
+/** 会话摘要；同一工作空间根目录下可挂多个 Agent 任务（Cursor 式） */
 export interface Conversation {
   id: string;
   title: string;
   createdAt: number;
-  /** 工作空间根目录；其下固定有 context/、models/、plans/ */
+  /** 工作空间根目录；任务产物在 context|models|plans/tasks/<id>/ */
   workspaceDir?: string | null;
   groupId?: string | null;
 }

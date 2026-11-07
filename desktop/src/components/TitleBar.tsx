@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, type Window } from "@tauri-apps/api/window";
 import { BrandLockup } from "./Logo";
 import { Icon } from "./Icon";
 
 const WIN_CONTROL_CLASS = "titlebar-win-control";
+
+function tryGetCurrentWindow(): Window | null {
+  try {
+    return getCurrentWindow();
+  } catch {
+    return null;
+  }
+}
 
 /** Windows 风格：单方框 = 最大化；重叠方框 = 还原（不再用向外展开的 maximize-3） */
 function MaximizeGlyph({ restored }: { restored: boolean }) {
@@ -62,17 +70,20 @@ export function TitleBar() {
   const [maximized, setMaximized] = useState(false);
 
   const syncMaximized = useCallback(async () => {
+    const win = tryGetCurrentWindow();
+    if (!win) return;
     try {
-      setMaximized(await getCurrentWindow().isMaximized());
+      setMaximized(await win.isMaximized());
     } catch {
       // ignore
     }
   }, []);
 
   useEffect(() => {
-    const win = getCurrentWindow();
-    const unsubs: Array<() => void> = [];
+    const win = tryGetCurrentWindow();
+    if (!win) return;
 
+    const unsubs: Array<() => void> = [];
     void syncMaximized();
 
     void win
@@ -95,11 +106,12 @@ export function TitleBar() {
   }, [syncMaximized]);
 
   const handleMinimize = useCallback(() => {
-    void getCurrentWindow().minimize();
+    void tryGetCurrentWindow()?.minimize();
   }, []);
 
   const handleToggleMaximize = useCallback(async () => {
-    const win = getCurrentWindow();
+    const win = tryGetCurrentWindow();
+    if (!win) return;
     setMaximized((prev) => !prev);
     try {
       await win.toggleMaximize();
@@ -112,7 +124,7 @@ export function TitleBar() {
   }, []);
 
   const handleClose = useCallback(() => {
-    void getCurrentWindow().close();
+    void tryGetCurrentWindow()?.close();
   }, []);
 
   return (

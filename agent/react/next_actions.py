@@ -39,7 +39,16 @@ def build_next_actions(
                     "prompt": (
                         f"请基于已生成的模型继续：{path_hint}\n"
                         "导出关键物理量的结果图与数据到 output/ 目录（如温度场、等效应力），"
-                        "并简要说明每个结果的物理含义与文件路径。"
+                        "CSV 优先走 MPh 后处理后端；并简要说明每个结果的物理含义与文件路径。"
+                    ),
+                },
+                {
+                    "id": "evaluate_results",
+                    "label": "求值关键物理量",
+                    "prompt": (
+                        f"请对已求解模型做结果求值：{path_hint}\n"
+                        "优先用 evaluate_results（MPh）计算如 maxop1(T) 等标量，"
+                        "汇报数值与单位；若缺算子请先补后处理节点再求值。"
                     ),
                 },
                 {
@@ -47,7 +56,7 @@ def build_next_actions(
                     "label": "参数扫描对比",
                     "prompt": (
                         f"请在当前模型上增加参数化扫描：{path_hint}\n"
-                        "选择 1 个关键参数（材料、载荷或几何尺寸）扫描 3~5 个取值，"
+                        "先用 set_parameters 改参；选择 1 个关键参数扫描 3~5 个取值，"
                         "重新求解后导出对比 CSV 到 output/，并总结趋势。"
                     ),
                 },

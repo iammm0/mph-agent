@@ -6,11 +6,13 @@ import { useTheme, ACCENT_PRESETS } from "../../context/ThemeContext";
 import { useAppState } from "../../context/AppStateContext";
 import {
   apiConfigToEnv,
+  COMPUTE_PREFERENCE_OPTIONS,
   getProviderConfig,
   getProviderMeta,
   loadApiConfig,
   saveApiConfig,
   type ApiConfig,
+  type ComputePreference,
   type LLMBackendId,
 } from "../../lib/apiConfig";
 import type { BridgeResponse, MyComsolModel, SettingsSection } from "../../lib/types";
@@ -48,6 +50,7 @@ function buildComsolEnv(
     MODEL_OUTPUT_DIR: modelsDirOf(workspaceDir),
     COMSOL_JAR_PATH: config.comsol_jar_path,
     JAVA_HOME: config.java_home,
+    COMSOL_COMPUTE_PREFERENCE: config.compute_preference || "auto",
   };
 }
 
@@ -611,6 +614,38 @@ export function SettingsDialog({
                       清除
                     </button>
                   )}
+                </div>
+              </div>
+
+              <div className="settings-field">
+                <label>求解计算偏好</label>
+                <p className="settings-hint">
+                  跑任务前可切换。COMSOL 6.3 的 GPU 仅覆盖部分场景（如时间显式声学）；结构/传热多数仍走
+                  CPU。
+                </p>
+                <div className="settings-compute-prefs" role="radiogroup" aria-label="计算偏好">
+                  {COMPUTE_PREFERENCE_OPTIONS.map((opt) => {
+                    const selected =
+                      (apiConfig.compute_preference || "auto") === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        className={`settings-compute-pref${selected ? " is-selected" : ""}`}
+                        onClick={() =>
+                          setApiConfig((config) => ({
+                            ...config,
+                            compute_preference: opt.id as ComputePreference,
+                          }))
+                        }
+                      >
+                        <strong>{opt.label}</strong>
+                        <span>{opt.hint}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

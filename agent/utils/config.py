@@ -99,6 +99,8 @@ class Settings(BaseSettings):
     java_download_mirror: str = ""
     # 为 true 时禁用自动下载 JDK，仅使用已存在的 JAVA_HOME 或 runtime/java（环境已就绪时可用）
     java_skip_auto_download: bool = False
+    # 可选 MPh 后处理后端：auto（装了就用）| on | off
+    mph_backend: str = "auto"
     
     # 日志配置
     log_level: str = "INFO"

@@ -20,6 +20,7 @@
 | `comsol-basics` | 几何建模要点：矩形/圆/椭圆参数、单位、顺序、命名与 JSON 规范 |
 | `comsol-physics` | 物理场类型（传热/电磁/结构/流体）、边界条件、材料、稳态/瞬态 |
 | `comsol-workflow` | 建模步骤顺序、研究类型、task_type 与 required_steps 规划、经验要点 |
+| `comsol-mph-postprocess` | 可选接入开源 MPh：参数/求值/CSV 导出与求解验收；不替代建模主链路 |
 
 ## 持久化与向量检索（SQLite + sqlite-vec VSS）
 

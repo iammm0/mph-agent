@@ -5,15 +5,21 @@ import importlib.util
 import re
 import shutil
 import tempfile
+import threading
 from datetime import datetime
 from html import unescape
 from pathlib import Path
 from types import MethodType
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from agent.executor.comsol_runner import COMSOLRunner
+from agent.executor.compute_backend import (
+    detect_compute_backend,
+    mark_solve_backend,
+    should_attempt_gpu,
+)
 from agent.utils.config import get_settings
 from agent.utils.logger import get_logger
 from agent.schemas.material import MaterialDefinition, MaterialPlan
@@ -91,6 +97,9 @@ THERMAL_K_BY_NAME = {
 DEFAULT_THERMAL_K_SOLID = 50.0
 DEFAULT_DENSITY_SOLID = 2700.0
 DEFAULT_CP_SOLID = 900.0
+# 线弹性材料默认 E/nu，避免「未定义线弹性材料所需的材料属性 nu/E」
+DEFAULT_YOUNGS_MODULUS_SOLID = 200e9
+DEFAULT_POISSONS_RATIO = 0.3
 
 DENSITY_BY_NAME = {
     "steel": 7850.0,
@@ -104,6 +113,24 @@ CP_BY_NAME = {
     "copper": 385.0,
     "aluminum": 900.0,
     "water": 4180.0,
+}
+
+YOUNGS_MODULUS_BY_NAME = {
+    "steel": 200e9,
+    "copper": 110e9,
+    "aluminum": 70e9,
+    "aluminium": 70e9,
+    "glass": 70e9,
+    "titanium": 110e9,
+}
+
+POISSONS_RATIO_BY_NAME = {
+    "steel": 0.3,
+    "copper": 0.35,
+    "aluminum": 0.33,
+    "aluminium": 0.33,
+    "glass": 0.22,
+    "titanium": 0.34,
 }
 
 
@@ -120,8 +147,21 @@ def _comsol_value(value: Any, unit: Optional[str] = None) -> str:
 def _physics_parameter_value(condition_type: str, key: str, value: Any) -> str:
     if isinstance(value, str):
         return value
-    if condition_type == "Temperature" and key in {"T0", "T", "Tamb"}:
+    if condition_type in {"Temperature", "temperature"} and key in {"T0", "T", "Tamb"}:
         return _comsol_value(value, "K")
+    if condition_type in {"ConvectiveHeatFlux", "convective_heat_flux"} and key in {
+        "Text",
+        "Tinf",
+        "Tamb",
+    }:
+        return _comsol_value(value, "K")
+    if condition_type in {"ConvectiveHeatFlux", "convective_heat_flux"} and key in {
+        "h",
+        "h0",
+    }:
+        return _comsol_value(value, "W/(m^2*K)")
+    if condition_type in {"HeatFlux", "heat_flux"} and key in {"q0", "q"}:
+        return _comsol_value(value, "W/m^2")
     return _comsol_value(value)
 
 
@@ -131,9 +171,67 @@ def _heat_boundary_feature_type(condition_type: str) -> str:
         "temperature": "TemperatureBoundary",
         "HeatFlux": "HeatFluxBoundary",
         "heat_flux": "HeatFluxBoundary",
+        # COMSOL 无独立 ConvectiveHeatFlux 特征：走 HeatFluxBoundary + HeatFluxType
+        "ConvectiveHeatFlux": "HeatFluxBoundary",
+        "convective_heat_flux": "HeatFluxBoundary",
         "ThermalInsulation": "ThermalInsulation",
         "thermal_insulation": "ThermalInsulation",
     }.get(condition_type, condition_type)
+
+
+def _is_convective_heat_flux(condition_type: str) -> bool:
+    return condition_type in {"ConvectiveHeatFlux", "convective_heat_flux"}
+
+
+def _apply_physics_feature_selection(feature, selection: Any) -> None:
+    """支持 list 面 ID，以及 \"all\"/\"exterior\" 字符串选择。"""
+    if selection is None:
+        return
+    if isinstance(selection, str):
+        token = selection.strip().lower()
+        if token in {"all", "exterior", "*", "entire"}:
+            feature.selection().all()
+            return
+        # 允许 "1,2,3" 或 "1 2 3"
+        parts = [p for p in selection.replace(",", " ").split() if p.strip()]
+        ids: List[int] = []
+        for p in parts:
+            try:
+                ids.append(int(p))
+            except ValueError:
+                return
+        if ids:
+            feature.selection().set(ids)
+        return
+    if isinstance(selection, list) and selection:
+        feature.selection().set(selection)
+
+
+def _configure_heat_flux_boundary(feature, condition_type: str, parameters: Dict[str, Any]) -> None:
+    """为 HeatFluxBoundary 配置一般热通量或对流换热。"""
+    if _is_convective_heat_flux(condition_type):
+        for key, val in (
+            ("HeatFluxType", "ConvectiveHeatFlux"),
+            ("heatFluxType", "ConvectiveHeatFlux"),
+            ("HeatFluxType", "Convective"),
+        ):
+            try:
+                feature.set(key, val)
+                break
+            except Exception:
+                continue
+        return
+    if condition_type in {"HeatFlux", "heat_flux"}:
+        for key, val in (
+            ("HeatFluxType", "GeneralInwardHeatFlux"),
+            ("heatFluxType", "GeneralInwardHeatFlux"),
+            ("HeatFluxType", "InwardHeatFlux"),
+        ):
+            try:
+                feature.set(key, val)
+                break
+            except Exception:
+                continue
 
 
 EMW_BOUNDARY_FEATURE_ALIASES = {
@@ -309,18 +407,21 @@ def _material_lookup_value(
     return default
 
 
-def _ensure_material_heat_properties(feat, mat_def: MaterialDefinition) -> None:
-    """Write baseline heat-transfer material properties explicitly."""
-
-    group = None
+def _material_def_property_group(feat):
+    """Resolve the Basic/def property group used by Heat Transfer and Solid Mechanics."""
     for group_name in ("def", "Def", "Basic", "basic"):
         try:
-            group = feat.propertyGroup(group_name)
-            break
+            return feat.propertyGroup(group_name)
         except Exception:
             continue
+    return None
+
+
+def _ensure_material_heat_properties(feat, mat_def: MaterialDefinition) -> None:
+    """Write baseline heat-transfer material properties explicitly."""
+    group = _material_def_property_group(feat)
     if group is None:
-        logger.warning("鏉愭枡灞炴€х粍涓嶅彲鐢紝璺宠繃鐑睘鎬цˉ鍏?")
+        logger.warning("材料属性组不可用，跳过热属性补齐")
         return
 
     values = {
@@ -341,7 +442,34 @@ def _ensure_material_heat_properties(feat, mat_def: MaterialDefinition) -> None:
         try:
             group.set(name, value)
         except Exception as exc:
-            logger.warning("璁剧疆鏉愭枡鐑睘鎬?%s 澶辫触: %s", name, exc)
+            logger.warning("设置材料热属性 %s 失败: %s", name, exc)
+
+
+def _ensure_material_elastic_properties(feat, mat_def: MaterialDefinition) -> None:
+    """补齐线弹性所需 E/nu，避免固体力学报「未定义线弹性材料所需的材料属性 nu」。"""
+    group = _material_def_property_group(feat)
+    if group is None:
+        logger.warning("材料属性组不可用，跳过弹性属性补齐")
+        return
+
+    e_val = _material_lookup_value(
+        mat_def, YOUNGS_MODULUS_BY_NAME, DEFAULT_YOUNGS_MODULUS_SOLID
+    )
+    nu_val = _material_lookup_value(
+        mat_def, POISSONS_RATIO_BY_NAME, DEFAULT_POISSONS_RATIO
+    )
+    # 同时写短名与长名，兼容不同 COMSOL 版本 /「来自材料」解析
+    values = {
+        "E": _comsol_value(e_val, "Pa"),
+        "nu": _comsol_value(nu_val),
+        "youngsmodulus": _comsol_value(e_val, "Pa"),
+        "poissonsratio": _comsol_value(nu_val),
+    }
+    for name, value in values.items():
+        try:
+            group.set(name, value)
+        except Exception as exc:
+            logger.warning("设置材料弹性属性 %s 失败: %s", name, exc)
 
 
 def _save_model_avoid_lock(model, dest_path: Path, allow_fallback: bool = True):
@@ -1831,12 +1959,22 @@ class JavaAPIController:
                     logger.warning("内置材料加载失败: %s，将使用自定义属性", mat_def.builtin_name)
                     _ensure_material_thermal_k(feat, mat_def)
                 _ensure_material_heat_properties(feat, mat_def)
+                # 内置库偶发缺 E/nu 或加载失败时，显式补齐，保证固体力学可解
+                _ensure_material_elastic_properties(feat, mat_def)
             else:
                 group = mat_def.property_group or "def"
                 prop_group = _material_property_group(feat, group)
                 prop_names_lower = [p.name.strip().lower() for p in mat_def.properties]
                 has_k = any(
                     n in ("k", "thermalconductivity", "thermal conductivity")
+                    for n in prop_names_lower
+                )
+                has_e = any(
+                    n in ("e", "youngsmodulus", "young's modulus", "youngs modulus")
+                    for n in prop_names_lower
+                )
+                has_nu = any(
+                    n in ("nu", "poissonsratio", "poisson's ratio", "poissons ratio")
                     for n in prop_names_lower
                 )
                 for prop in mat_def.properties:
@@ -1854,6 +1992,8 @@ class JavaAPIController:
                 if not has_k:
                     _ensure_material_thermal_k(feat, mat_def)
                 _ensure_material_heat_properties(feat, mat_def)
+                if not (has_e and has_nu):
+                    _ensure_material_elastic_properties(feat, mat_def)
             added.append(
                 {"material": actual_name, "label": mat_def.label, "requested_name": mat_def.name}
             )
@@ -1958,7 +2098,24 @@ class JavaAPIController:
                 except Exception as e:
                     logger.warning("璁剧疆 HeatTransfer solid1 榛樿鐑睘鎬уけ璐? %s", e)
             # Boundary conditions
-            for bc in field.boundary_conditions:
+            # 传热：先挂对流/温度（全外表面），再挂热通量，避免「all」覆盖底面热源
+            boundary_conditions = list(field.boundary_conditions or [])
+            if field.type == "heat":
+
+                def _heat_bc_priority(bc_item) -> int:
+                    ct = str(getattr(bc_item, "condition_type", "") or "")
+                    if ct in {"HeatFlux", "heat_flux"}:
+                        return 2
+                    if _is_convective_heat_flux(ct) or ct in {
+                        "Temperature",
+                        "temperature",
+                    }:
+                        return 0
+                    return 1
+
+                boundary_conditions.sort(key=_heat_bc_priority)
+
+            for bc in boundary_conditions:
                 try:
                     if field.type == "heat":
                         feature_types = [_heat_boundary_feature_type(bc.condition_type)]
@@ -2002,10 +2159,14 @@ class JavaAPIController:
                     feature_type = _physics_create_feature_with_candidates(
                         ph_feat, bc.name, feature_types
                     )
-                    if isinstance(bc.selection, list) and bc.selection:
-                        ph_feat.feature(bc.name).selection().set(bc.selection)
+                    bc_feat = ph_feat.feature(bc.name)
+                    _apply_physics_feature_selection(bc_feat, bc.selection)
+                    if field.type == "heat":
+                        _configure_heat_flux_boundary(
+                            bc_feat, bc.condition_type, bc.parameters or {}
+                        )
                     _set_feature_parameters_best_effort(
-                        ph_feat.feature(bc.name),
+                        bc_feat,
                         bc.condition_type,
                         bc.parameters,
                         notes,
@@ -2270,35 +2431,288 @@ class JavaAPIController:
         model_path: str,
         run_single_file: bool = False,
         save_to_path: Optional[str] = None,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Dict[str, Any]:
         logger.info("执行求解...")
+        progress_path: Optional[Path] = None
+        stop_flag = threading.Event()
+        poller: Optional[threading.Thread] = None
         try:
             model = self._load_model(model_path)
-            study_name = self._solve_direct(model)
+            backend = detect_compute_backend()
+            if progress_callback:
+                try:
+                    progress_callback(
+                        {
+                            "phase": "prepare",
+                            "percent": 1,
+                            "message": "准备求解…",
+                            "active": True,
+                            "compute": backend.to_dict(),
+                        }
+                    )
+                except Exception:
+                    pass
+
+            progress_path = self._enable_solve_progress_log()
+            if progress_path is not None and progress_callback is not None:
+                poller = threading.Thread(
+                    target=self._poll_solve_progress_file,
+                    args=(progress_path, progress_callback, stop_flag),
+                    name="comsol-solve-progress",
+                    daemon=True,
+                )
+                poller.start()
+
+            study_name, gpu_active = self._solve_direct(
+                model, progress_callback=progress_callback
+            )
+            compute = mark_solve_backend(
+                gpu_active=gpu_active,
+                applicable=gpu_active,
+                reason=(
+                    "本次求解已启用 COMSOL HardwareAcceleration（GPU）。"
+                    if gpu_active
+                    else ""
+                ),
+            )
             if save_to_path:
                 saved_path = _save_model_to_new_path(model, Path(save_to_path))
             else:
                 saved_path = _save_model_avoid_lock(
                     model, Path(model_path), allow_fallback=not run_single_file
                 )
-            out = {"status": "success", "message": "求解成功", "result": {"study": study_name}}
+            out = {
+                "status": "success",
+                "message": "求解成功",
+                "result": {"study": study_name, "gpu_active": gpu_active},
+                "compute_backend": compute.to_dict(),
+            }
             out["saved_path"] = str(saved_path.resolve())
+            if progress_callback:
+                try:
+                    progress_callback(
+                        {
+                            "phase": "done",
+                            "percent": 100,
+                            "message": "求解完成",
+                            "active": False,
+                            "compute": compute.to_dict(),
+                        }
+                    )
+                except Exception:
+                    pass
             return out
         except Exception as e:
             logger.error(f"求解失败: {e}")
-            return {"status": "error", "message": str(e)}
+            compute = mark_solve_backend(gpu_active=False, reason=str(e)[:180])
+            if progress_callback:
+                try:
+                    progress_callback(
+                        {
+                            "phase": "error",
+                            "percent": 0,
+                            "message": f"求解失败: {e}",
+                            "active": False,
+                            "compute": compute.to_dict(),
+                        }
+                    )
+                except Exception:
+                    pass
+            return {
+                "status": "error",
+                "message": str(e),
+                "compute_backend": compute.to_dict(),
+            }
+        finally:
+            stop_flag.set()
+            if poller is not None and poller.is_alive():
+                poller.join(timeout=1.5)
+            if progress_path is not None:
+                try:
+                    progress_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
-    def _solve_direct(self, model) -> str:
+    def _enable_solve_progress_log(self) -> Optional[Path]:
+        """启用 ModelUtil.showProgress(file)，便于轮询求解进度。"""
+        try:
+            jpype = _jpype()
+            ModelUtil = jpype.JClass("com.comsol.model.util.ModelUtil")
+            progress_path = Path(tempfile.gettempdir()) / f"mph-agent-solve-{uuid4().hex}.log"
+            progress_path.write_text("", encoding="utf-8")
+            ModelUtil.showProgress(str(progress_path))
+            logger.info("已启用 COMSOL 进度日志: %s", progress_path)
+            return progress_path
+        except Exception as exc:
+            logger.debug("启用 showProgress 失败（将仅上报阶段进度）: %s", exc)
+            return None
+
+    @staticmethod
+    def _parse_progress_text(text: str) -> tuple[Optional[float], str]:
+        """从进度日志文本中提取百分比与最近一行消息。"""
+        if not text or not text.strip():
+            return None, ""
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        message = lines[-1][:240] if lines else ""
+        percent: Optional[float] = None
+        # 优先匹配显式百分号
+        for ln in reversed(lines):
+            m = re.search(r"(\d{1,3}(?:\.\d+)?)\s*%", ln)
+            if m:
+                percent = max(0.0, min(100.0, float(m.group(1))))
+                message = ln[:240]
+                break
+        if percent is None:
+            for ln in reversed(lines):
+                m = re.search(r"(?:progress|进度)\s*[:=]?\s*(\d{1,3}(?:\.\d+)?)", ln, re.I)
+                if m:
+                    percent = max(0.0, min(100.0, float(m.group(1))))
+                    message = ln[:240]
+                    break
+        return percent, message
+
+    def _poll_solve_progress_file(
+        self,
+        progress_path: Path,
+        callback: Callable[[Dict[str, Any]], None],
+        stop_flag: threading.Event,
+    ) -> None:
+        last_payload = ""
+        while not stop_flag.is_set():
+            try:
+                if progress_path.exists():
+                    text = progress_path.read_text(encoding="utf-8", errors="ignore")
+                    percent, message = self._parse_progress_text(text)
+                    if message or percent is not None:
+                        payload = {
+                            "phase": "solving",
+                            "percent": percent if percent is not None else 0,
+                            "message": message or "求解中…",
+                            "active": True,
+                        }
+                        key = f"{payload['percent']}|{payload['message']}"
+                        if key != last_payload:
+                            last_payload = key
+                            callback(payload)
+            except Exception:
+                pass
+            stop_flag.wait(0.4)
+
+    def _try_enable_gpu_acceleration(self, model, study_name: str) -> bool:
+        """对时间求解器尝试挂载 HardwareAcceleration（仅部分声学等场景有效）。"""
+        if not should_attempt_gpu():
+            logger.info("按计算偏好跳过 GPU HardwareAcceleration")
+            return False
+        backend = detect_compute_backend()
+        if not backend.gpu_available:
+            return False
+        try:
+            sol_tags = list(model.sol().tags()) if hasattr(model, "sol") else []
+        except Exception:
+            sol_tags = []
+        enabled = False
+        for sol_tag in sol_tags:
+            try:
+                sol = model.sol(sol_tag)
+                feat_tags = list(sol.feature().tags())
+            except Exception:
+                continue
+            for feat_tag in feat_tags:
+                try:
+                    feat = sol.feature(feat_tag)
+                    # Time / TimeExplicit 类特征才有意义
+                    ftype = ""
+                    try:
+                        ftype = str(feat.getType())
+                    except Exception:
+                        ftype = str(feat_tag)
+                    if "time" not in ftype.lower() and "time" not in str(feat_tag).lower():
+                        continue
+                    # 已有则直接打开；没有则创建
+                    child_tags = []
+                    try:
+                        child_tags = [str(t) for t in feat.feature().tags()]
+                    except Exception:
+                        child_tags = []
+                    ha_tag = next(
+                        (t for t in child_tags if "hardware" in t.lower() or t.lower() == "ha1"),
+                        None,
+                    )
+                    if ha_tag is None:
+                        try:
+                            feat.create("ha1", "HardwareAcceleration")
+                            ha_tag = "ha1"
+                        except Exception:
+                            continue
+                    ha = feat.feature(ha_tag)
+                    for key, val in (
+                        ("dgacc", True),
+                        ("gpuresidual", True),
+                        ("gpusingleprecision", False),
+                    ):
+                        try:
+                            ha.set(key, val)
+                        except Exception:
+                            pass
+                    enabled = True
+                    logger.info(
+                        "已为求解器 %s/%s 启用 HardwareAcceleration", sol_tag, feat_tag
+                    )
+                except Exception as exc:
+                    logger.debug("启用 GPU 加速失败 %s/%s: %s", sol_tag, feat_tag, exc)
+        if not enabled:
+            # 研究步本身为 Time 时也记一笔，便于前端说明
+            try:
+                st = model.study(study_name)
+                for t in st.feature().tags():
+                    try:
+                        if "time" in str(st.feature(t).getType()).lower():
+                            logger.info(
+                                "研究含时间步，但未能挂载 HardwareAcceleration（可能物理场不支持）"
+                            )
+                            break
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        return enabled
+
+    def _solve_direct(
+        self,
+        model,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ) -> tuple[str, bool]:
         tags = model.study().tags()
         if not tags:
             raise RuntimeError("模型中没有研究，请先配置研究")
         study_name = tags[-1]
+        gpu_active = False
+        try:
+            gpu_active = bool(self._try_enable_gpu_acceleration(model, study_name))
+        except Exception as exc:
+            logger.debug("尝试 GPU 加速时异常: %s", exc)
+        if progress_callback:
+            try:
+                progress_callback(
+                    {
+                        "phase": "solving",
+                        "percent": 5,
+                        "message": (
+                            "GPU 加速求解中…" if gpu_active else "CPU 多核求解中…"
+                        ),
+                        "active": True,
+                    }
+                )
+            except Exception:
+                pass
         try:
             model.study(study_name).run()
         except Exception as first_error:
             logger.warning("默认 study.run() 求解失败，尝试直接求解器 fallback: %s", first_error)
             self._run_stationary_direct_solver(model, study_name)
-        return study_name
+            gpu_active = False
+        return study_name, gpu_active
 
     def _run_stationary_direct_solver(self, model, study_name: str) -> str:
         """Create a conservative stationary solver sequence with PARDISO."""

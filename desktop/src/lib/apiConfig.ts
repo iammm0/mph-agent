@@ -12,12 +12,17 @@ export interface ProviderConfig {
   model: string;
 }
 
+/** 跑任务前的计算偏好：自动 / 仅 CPU / 优先 GPU */
+export type ComputePreference = "auto" | "cpu" | "gpu";
+
 export interface ApiConfig {
   preferred_backend: LLMBackendId | null;
   providers: Record<LLMBackendId, ProviderConfig>;
   comsol_jar_path: string;
   /** Java 8 或 11 安装目录（JAVA_HOME），留空使用内置或系统 Java */
   java_home: string;
+  /** COMSOL 求解计算偏好 */
+  compute_preference: ComputePreference;
 }
 
 export interface ProviderCatalogEntry {
@@ -94,7 +99,44 @@ function makeDefaultConfig(): ApiConfig {
     providers: makeDefaultProviders(),
     comsol_jar_path: "",
     java_home: "",
+    compute_preference: "auto",
   };
+}
+
+export function normalizeComputePreference(value: unknown): ComputePreference {
+  const v = String(value ?? "auto").trim().toLowerCase();
+  if (v === "cpu" || v === "gpu" || v === "auto") return v;
+  return "auto";
+}
+
+export const COMPUTE_PREFERENCE_OPTIONS: {
+  id: ComputePreference;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    id: "auto",
+    label: "自动",
+    hint: "有 GPU 则尝试；不支持的物理场回落 CPU",
+  },
+  {
+    id: "cpu",
+    label: "仅 CPU",
+    hint: "强制 CPU 多核，不尝试 GPU",
+  },
+  {
+    id: "gpu",
+    label: "优先 GPU",
+    hint: "优先尝试 HardwareAcceleration（6.3 仅部分场景有效）",
+  },
+];
+
+export function nextComputePreference(
+  current: ComputePreference
+): ComputePreference {
+  const order: ComputePreference[] = ["auto", "cpu", "gpu"];
+  const idx = order.indexOf(current);
+  return order[(idx + 1) % order.length];
 }
 
 /** DeepSeek 已下线 deepseek-chat / deepseek-reasoner，映射到当前可用模型 */
@@ -170,6 +212,16 @@ function mergeStoredConfig(raw: RawApiConfig): ApiConfig {
   }
   if (typeof raw.java_home === "string") {
     config.java_home = raw.java_home;
+  }
+  if (
+    typeof raw.compute_preference === "string" ||
+    typeof (raw as { COMSOL_COMPUTE_PREFERENCE?: string }).COMSOL_COMPUTE_PREFERENCE ===
+      "string"
+  ) {
+    config.compute_preference = normalizeComputePreference(
+      raw.compute_preference ??
+        (raw as { COMSOL_COMPUTE_PREFERENCE?: string }).COMSOL_COMPUTE_PREFERENCE
+    );
   }
 
   return config;
@@ -307,6 +359,9 @@ export function apiConfigToEnv(config: ApiConfig): Record<string, string> {
     LLM_BACKEND: "deepseek",
     DEEPSEEK_API_KEY: "",
     DEEPSEEK_MODEL: "",
+    COMSOL_COMPUTE_PREFERENCE: normalizeComputePreference(
+      config.compute_preference
+    ),
   };
 
   const provider = getProviderConfig(config, "deepseek");

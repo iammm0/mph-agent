@@ -1217,6 +1217,19 @@ wheels = [
 ]
 
 [[package]]
+name = "mph"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jpype1" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ef/6e/1de806ec962cd29a9c9a74905b43b75d90f7daf7c970bb4c7ceb9877164e/mph-1.4.0-py3-none-any.whl", hash = "sha256:835835ac9d211601def50a6f8c61b783531e905d7165c8de7bf8a378a040c385", size = 65897, upload-time = "2026-08-30T12:36:28.784Z" },
+]
+
+[[package]]
 name = "mph-agent"
 version = "0.1.0"
 source = { editable = "." }
@@ -1246,6 +1259,9 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+mph = [
+    { name = "mph" },
+]
 vec = [
     { name = "sentence-transformers" },
 ]
@@ -1257,6 +1273,7 @@ requires-dist = [
     { name = "jpype1", specifier = ">=1.4.0" },
     { name = "litellm", specifier = ">=1.60.0" },
     { name = "loguru", specifier = ">=0.7.2" },
+    { name = "mph", marker = "extra == 'mph'", specifier = ">=1.2.0" },
     { name = "openai", specifier = ">=1.0.0" },
     { name = "pydantic", specifier = ">=2.5.0" },
     { name = "pydantic-settings", specifier = ">=2.1.0" },
@@ -1272,7 +1289,7 @@ requires-dist = [
     { name = "tqdm", specifier = ">=4.66.0" },
     { name = "uvicorn", specifier = ">=0.27" },
 ]
-provides-extras = ["dev", "vec"]
+provides-extras = ["dev", "vec", "mph"]
 
 [[package]]
 name = "mpmath"

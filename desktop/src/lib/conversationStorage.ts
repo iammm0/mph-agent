@@ -11,7 +11,7 @@ function normalizeConversation(raw: unknown): Conversation | null {
   if (!raw || typeof raw !== "object") return null;
   const item = raw as Record<string, unknown>;
   if (typeof item.id !== "string" || !item.id) return null;
-  const title = typeof item.title === "string" && item.title.trim() ? item.title : "工作空间";
+  const title = typeof item.title === "string" && item.title.trim() ? item.title : "Agent 任务";
   const createdAt =
     typeof item.createdAt === "number" && Number.isFinite(item.createdAt)
       ? item.createdAt

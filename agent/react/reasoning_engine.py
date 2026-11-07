@@ -485,10 +485,22 @@ class ReasoningEngine:
                         EventType.LLM_STREAM_CHUNK, {"phase": "planning", "chunk": chunk}
                     )
 
+            def on_reasoning_chunk(chunk: str) -> None:
+                if chunk and self._event_bus is not None:
+                    self._event_bus.emit_type(
+                        EventType.LLM_STREAM_CHUNK,
+                        {"phase": "thinking", "kind": "reasoning", "chunk": chunk},
+                    )
+
             stream_callback: Callable[[str], None] = on_chunk
 
             try:
-                response = self.llm.call_stream(prompt, temperature=0.1, on_chunk=stream_callback)
+                response = self.llm.call_stream(
+                    prompt,
+                    temperature=0.1,
+                    on_chunk=stream_callback,
+                    on_reasoning_chunk=on_reasoning_chunk,
+                )
             except Exception:
                 response = self.llm.call(prompt, temperature=0.1)
         else:
@@ -576,6 +588,8 @@ class ReasoningEngine:
             "import_geometry": "geometry_io",
             "create_selection": "selection",
             "export_results": "postprocess",
+            "evaluate_results": "postprocess",
+            "set_parameters": "postprocess",
             "call_official_api": "java_api",
         }
 
@@ -610,6 +624,19 @@ class ReasoningEngine:
                 "out_path": params.get("out_path"),
                 "plot_group_tag": params.get("plot_group_tag"),
                 "export_type": params.get("export_type"),
+                "dataset": params.get("dataset"),
+                "backend": params.get("backend"),
+            },
+            "evaluate_results": {
+                "expression": params.get("expression") or params.get("expr"),
+                "expressions": params.get("expressions"),
+                "dataset": params.get("dataset"),
+                "unit": params.get("unit"),
+                "backend": params.get("backend"),
+            },
+            "set_parameters": {
+                "parameters": params.get("parameters") or params.get("values") or params.get("map"),
+                "backend": params.get("backend"),
             },
             # 高级：直接调度已集成的官方 Java API
             # - method + args + target_path → invoke_official_api

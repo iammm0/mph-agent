@@ -49,6 +49,10 @@ dev = [
 vec = [
     "sentence-transformers>=2.2.0",
 ]
+# 可选：MPh（https://github.com/MPh-py/MPh）用于参数/求值/导出等后处理
+mph = [
+    "MPh>=1.2.0",
+]
 # 记忆模块已内置：Python 原生异步 + 本地 SQLite/文件，无需额外依赖
 
 # 不再设定 Python 包，仅保留桌面端与源码运行；使用 uv run python cli.py 启动

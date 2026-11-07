@@ -645,9 +645,22 @@ def _handle(req: dict[str, Any]) -> None:
                 _reply(False, "缺少 conversation_id", deleted_paths=[])
                 return
             try:
-                cm = get_context_manager(conversation_id=conversation_id)
-                deleted_paths = cm.delete_conversation_and_models()
-                _reply(True, "已删除对话及其关联的 COMSOL 模型", deleted_paths=deleted_paths)
+                workspace_dir = (req.get("workspace_dir") or "").strip() or None
+                wipe_workspace = bool(req.get("wipe_workspace"))
+                cm = get_context_manager(
+                    conversation_id=conversation_id,
+                    workspace_dir=workspace_dir,
+                )
+                deleted_paths = cm.delete_conversation_and_models(
+                    wipe_workspace=wipe_workspace
+                )
+                _reply(
+                    True,
+                    "已删除工作空间全部产物"
+                    if wipe_workspace
+                    else "已删除该 Agent 任务及其模型",
+                    deleted_paths=deleted_paths,
+                )
             except Exception as e:
                 _reply(False, str(e), deleted_paths=[])
             return

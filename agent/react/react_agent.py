@@ -28,6 +28,8 @@ _STEP_LABELS = {
     "configure_study": "研究配置",
     "solve": "求解",
     "export_results": "结果导出",
+    "evaluate_results": "结果求值",
+    "set_parameters": "参数设置",
     "import_geometry": "导入几何",
     "create_selection": "创建选择集",
     "call_official_api": "官方 API 细控",
@@ -43,6 +45,8 @@ _STEP_WHY = {
     "configure_study": "选择稳态/瞬态等研究类型并装配求解器。",
     "solve": "执行求解以验证模型可计算，这是闭环的最终目标。",
     "export_results": "把可交付结果图/数据落盘，便于验收。",
+    "evaluate_results": "对已求解模型求值（优先 MPh），用于温度/位移等标量验收。",
+    "set_parameters": "批量改全局参数（优先 MPh），用于参数化扫描改参。",
     "import_geometry": "复用外部 CAD/几何文件以缩短建模路径。",
     "create_selection": "为边界/域操作建立可引用选择集。",
     "call_official_api": "用官方 Java API 做细粒度节点控制。",
@@ -206,7 +210,11 @@ class ReActAgent:
     def _run_end_success_and_message(self, plan: ReActTaskPlan) -> tuple[bool, str]:
         """计算 RUN_END 的 success 与 message。"""
         if plan.status == "completed":
+            path = (getattr(plan, "model_path", None) or "").strip()
             tail = (plan.error or "").strip()
+            if path:
+                loc = f"求解成功。模型位置：{path}"
+                return True, f"{tail}\n{loc}".strip() if tail and tail not in loc else loc
             return True, tail or "已完成"
         if plan.status == "failed":
             return False, (plan.error or "任务失败").strip()
@@ -244,6 +252,14 @@ class ReActAgent:
         if self._event_bus:
             self._event_bus.emit_type(EventType.PLAN_START, {"user_input": user_input})
             self._event_bus.emit_type(EventType.TASK_PHASE, {"phase": "planning"})
+            try:
+                from agent.executor.compute_backend import detect_compute_backend
+
+                self._event_bus.emit_type(
+                    EventType.COMPUTE_BACKEND, detect_compute_backend().to_dict()
+                )
+            except Exception:
+                pass
 
         # 初始化任务计划（若给定 plan 则直接使用，否则由推理引擎规划）
         plan = self._initial_plan(
@@ -460,13 +476,21 @@ class ReActAgent:
         # 同步最终状态到 PlanRuntime，方便审计/桌面端读
         self._sync_plan_runtime(plan, phase="run_end")
 
-        # 无论成功/失败/中止：只保留一个最终模型路径，并发出 RUN_END 供前端统一提供打开/预览
+        # 成功时清理过程模型，只留 *_latest.mph；再发出 RUN_END 供前端展示路径与打开
+        end_success, _ = self._run_end_success_and_message(plan)
+        if end_success:
+            try:
+                self.action_executor.cleanup_stage_models(plan)
+            except Exception:
+                logger.debug("run_end 清理过程模型失败", exc_info=True)
+
         final_path = getattr(plan, "model_path", None)
         if final_path:
             try:
                 p = Path(final_path)
                 if p.exists():
                     final_path = str(p.resolve())
+                    plan.model_path = final_path
             except Exception:
                 final_path = None
 
@@ -686,22 +710,52 @@ class ReActAgent:
         adjust_summary = getattr(
             self.iteration_controller, "last_adjust_summary", None
         ) or ""
+        analysis_report = getattr(
+            self.iteration_controller, "last_analysis_report", None
+        )
         if self._event_bus:
+            details = {
+                "observation_status": observation.status,
+                "current_step_index": updated_plan.current_step_index + 1,
+                "total_steps": len(updated_plan.execution_path),
+                "plan_status": updated_plan.status,
+                "plan_error": updated_plan.error,
+            }
+            if analysis_report is not None:
+                try:
+                    details["analysis"] = {
+                        "error_summary": analysis_report.error_summary,
+                        "root_cause": analysis_report.root_cause_hypothesis,
+                        "selected": analysis_report.selected_hypothesis_id,
+                        "hypotheses": [
+                            {
+                                "id": h.id,
+                                "title": h.title,
+                                "angle": h.angle,
+                                "confidence": h.confidence,
+                                "tried": h.tried,
+                            }
+                            for h in (analysis_report.hypotheses or [])[:5]
+                        ],
+                        "evidence_sources": [
+                            e.source for e in (analysis_report.evidence or [])[:12]
+                        ],
+                    }
+                except Exception:
+                    pass
             self._event_bus.emit_type(
                 EventType.DECISION,
                 {
-                    "kind": "adjust_decision",
-                    "title": "决策：根据观察结果调整计划",
+                    "kind": "adjust_decision" if analysis_report is None else "error_analysis",
+                    "title": (
+                        "决策：分析 Agent 多角度修复"
+                        if analysis_report is not None
+                        else "决策：根据观察结果调整计划"
+                    ),
                     "reasoning": adjust_summary
                     or "检测到执行偏差，已回退/修补相关步骤并继续朝可求解目标推进。",
                     "basis": (observation.message or "")[:500],
-                    "details": {
-                        "observation_status": observation.status,
-                        "current_step_index": updated_plan.current_step_index + 1,
-                        "total_steps": len(updated_plan.execution_path),
-                        "plan_status": updated_plan.status,
-                        "plan_error": updated_plan.error,
-                    },
+                    "details": details,
                 },
             )
             # 调整后刷新细致过程面板
@@ -827,6 +881,8 @@ class ReActAgent:
             "import_geometry": "geometry_io",
             "create_selection": "selection",
             "export_results": "postprocess",
+            "evaluate_results": "postprocess",
+            "set_parameters": "postprocess",
             "call_official_api": "java_api",
         }
 

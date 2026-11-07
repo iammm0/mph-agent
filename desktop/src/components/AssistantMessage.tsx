@@ -20,24 +20,37 @@ import {
   NextActionsCard,
 } from "./run-events/NextActionsCard";
 
-/** 合并连续的 llm_stream_chunk 为单条，便于展示完整思维过程 */
+/** 合并连续同 phase/kind 的 llm_stream_chunk，便于展示完整思维过程 */
 function mergeStreamChunks(events: RunEvent[]): RunEvent[] {
   const out: RunEvent[] = [];
   let buf = "";
   let phase = "";
+  let kind = "";
+  const flush = () => {
+    if (!buf) return;
+    out.push({
+      _event: true,
+      type: "llm_stream_chunk",
+      data: { phase, kind: kind || undefined, chunk: buf, text: buf },
+    });
+    buf = "";
+    phase = "";
+    kind = "";
+  };
   for (const e of events) {
     if (e.type === "llm_stream_chunk") {
+      const nextPhase = String(e.data?.phase ?? phase);
+      const nextKind = String(e.data?.kind ?? "content");
+      if (buf && (nextPhase !== phase || nextKind !== (kind || "content"))) flush();
       buf += (e.data?.chunk ?? e.data?.text ?? "") as string;
-      phase = (e.data?.phase ?? phase) as string;
+      phase = nextPhase;
+      kind = nextKind;
       continue;
     }
-    if (buf) {
-      out.push({ _event: true, type: "llm_stream_chunk", data: { phase, chunk: buf, text: buf } });
-      buf = "";
-    }
+    flush();
     out.push(e);
   }
-  if (buf) out.push({ _event: true, type: "llm_stream_chunk", data: { phase, chunk: buf, text: buf } });
+  flush();
   return out;
 }
 
@@ -75,12 +88,35 @@ function formatTime(ts: number): string {
 
 function extractModelPath(text: string): string | null {
   if (!text) return null;
-  const partialIndex = text.lastIndexOf("模型已部分生成:");
-  const fullIndex = text.lastIndexOf("模型已生成:");
-  const idx = partialIndex >= 0 ? partialIndex : fullIndex;
-  if (idx < 0) return null;
-  const slice = text.slice(idx).replace(/^.*模型已(部分)?生成:\s*/, "").trim();
+  const markers = ["模型位置：", "模型位置:", "模型已部分生成:", "模型已生成:"];
+  let bestIdx = -1;
+  let markerUsed = "";
+  for (const m of markers) {
+    const idx = text.lastIndexOf(m);
+    if (idx > bestIdx) {
+      bestIdx = idx;
+      markerUsed = m;
+    }
+  }
+  if (bestIdx < 0) return null;
+  const slice = text
+    .slice(bestIdx + markerUsed.length)
+    .split(/\r?\n/)[0]
+    .trim();
   return slice || null;
+}
+
+function extractModelPathFromEvents(events: RunEvent[] | undefined): string | null {
+  if (!events?.length) return null;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const d = events[i]?.data;
+    const path = d?.model_path ?? d?.saved_path;
+    if (typeof path === "string" && path.trim()) return path.trim();
+    const result = d?.result as Record<string, unknown> | undefined;
+    const fromResult = result?.model_path ?? result?.saved_path;
+    if (typeof fromResult === "string" && fromResult.trim()) return fromResult.trim();
+  }
+  return null;
 }
 
 function extractStreamedAssistantText(events: RunEvent[] | undefined): string {
@@ -88,6 +124,9 @@ function extractStreamedAssistantText(events: RunEvent[] | undefined): string {
   let out = "";
   for (const e of events) {
     if (e.type !== "llm_stream_chunk") continue;
+    // reasoning 通道单独在 ThinkingDisclosure 展示，不混进正文
+    if (String(e.data?.kind ?? "") === "reasoning") continue;
+    if (String(e.data?.phase ?? "") === "thinking") continue;
     const chunk = (e.data?.chunk ?? e.data?.text ?? "") as string;
     if (chunk) out += chunk;
   }
@@ -120,12 +159,79 @@ function openInFolder(path: string) {
   });
 }
 
+function openModelFile(path: string) {
+  invoke("open_path", { path }).catch(() => {
+    openInFolder(path);
+  });
+}
+
+function copyPath(path: string) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(path).catch(() => {
+      alert(path);
+    });
+  } else {
+    alert(path);
+  }
+}
+
 function openPreviewMd(modelPath: string) {
   const dir = modelPath.replace(/[/\\][^/\\]*$/, "") || modelPath;
   const mdPath = (dir.endsWith("/") || dir.endsWith("\\") ? dir : dir + "/") + "operations.md";
   invoke("open_path", { path: mdPath }).catch(() => {
     alert("未找到操作记录文件 operations.md，请确认模型所在目录。");
   });
+}
+
+function ModelLocationCard({
+  path,
+  emphasize = false,
+}: {
+  path: string;
+  emphasize?: boolean;
+}) {
+  return (
+    <div className={`assistant-msg-model-card${emphasize ? " assistant-msg-model-card--ok" : ""}`}>
+      <div className="assistant-msg-model-label">模型位置</div>
+      <code className="assistant-msg-model-path" title={path}>
+        {path}
+      </code>
+      <div className="assistant-msg-model-actions">
+        <button
+          type="button"
+          className="assistant-msg-model-btn primary"
+          onClick={() => openModelFile(path)}
+          title="用系统默认程序打开 .mph"
+        >
+          打开模型
+        </button>
+        <button
+          type="button"
+          className="assistant-msg-model-btn"
+          onClick={() => openInFolder(path)}
+          title="在文件管理器中显示"
+        >
+          打开所在目录
+        </button>
+        <button
+          type="button"
+          className="assistant-msg-model-btn"
+          onClick={() => copyPath(path)}
+          title="复制完整路径"
+        >
+          复制路径
+        </button>
+        <button
+          type="button"
+          className="assistant-msg-model-btn"
+          onClick={() => openPreviewMd(path)}
+          title="预览操作记录 (operations.md)"
+        >
+          预览记录
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function AssistantMessage({ message }: { message: ChatMessage }) {
@@ -162,6 +268,7 @@ export function AssistantMessage({ message }: { message: ChatMessage }) {
   const modelPath =
     message.modelPath ??
     structured?.modelPath ??
+    extractModelPathFromEvents(message.events) ??
     extractModelPath(message.text || "");
   const phaseLabel = getPhaseLabel(message.events);
   const placeholderText = renderText || (isCurrentBusy ? phaseLabel : "") || "—";
@@ -172,6 +279,7 @@ export function AssistantMessage({ message }: { message: ChatMessage }) {
     [message.events]
   );
   const showNextActions = Boolean(nextActions && !isCurrentBusy);
+  const showModelCard = Boolean(modelPath && !isCurrentBusy && !showDoctorUi);
 
   return (
     <div className={`assistant-msg${isCurrentBusy ? " assistant-msg--busy" : ""}`}>
@@ -195,6 +303,7 @@ export function AssistantMessage({ message }: { message: ChatMessage }) {
               <ReasoningStream
                 events={mergeStreamChunks(message.events!)}
                 isLive={isCurrentBusy}
+                finishedAt={message.time}
               />
             </div>
           )}
@@ -215,26 +324,6 @@ export function AssistantMessage({ message }: { message: ChatMessage }) {
               content={sanitizeLLMDisplayText(bubbleSourceText || message.text || "")}
             />
           </div>
-          {modelPath && (
-            <div className="assistant-msg-meta">
-              <button
-                type="button"
-                className="assistant-msg-model-btn"
-                onClick={() => openInFolder(modelPath)}
-                title="打开模型所在目录"
-              >
-                在文件管理器中打开
-              </button>
-              <button
-                type="button"
-                className="assistant-msg-model-btn"
-                onClick={() => openPreviewMd(modelPath)}
-                title="预览操作记录 (operations.md)"
-              >
-                预览
-              </button>
-            </div>
-          )}
         </div>
       )}
       {showText && (
@@ -244,30 +333,13 @@ export function AssistantMessage({ message }: { message: ChatMessage }) {
             {isStreamingText && <span className="assistant-msg-stream-cursor" aria-hidden />}
           </div>
           <div className="assistant-msg-meta">
-            {modelPath && (
-              <>
-                <button
-                  type="button"
-                  className="assistant-msg-model-btn"
-                  onClick={() => openInFolder(modelPath)}
-                  title="打开模型所在目录"
-                >
-                  在文件管理器中打开
-                </button>
-                <button
-                  type="button"
-                  className="assistant-msg-model-btn"
-                  onClick={() => openPreviewMd(modelPath)}
-                  title="预览操作记录 (operations.md)"
-                >
-                  预览
-                </button>
-              </>
-            )}
             <span className="dot">▣</span>
             <span>{formatTime(message.time ?? Date.now())}</span>
           </div>
         </div>
+      )}
+      {showModelCard && modelPath && (
+        <ModelLocationCard path={modelPath} emphasize={!isError} />
       )}
       {caseData && !isError && (
         <div className="assistant-msg-body success assistant-msg-body--case">

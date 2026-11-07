@@ -58,6 +58,8 @@ MATERIAL_PROPERTY_PRESETS = {
         MaterialProperty(name="density", value=8960, unit="kg/m^3"),
         MaterialProperty(name="thermalconductivity", value=400, unit="W/(m*K)"),
         MaterialProperty(name="specificheat", value=385, unit="J/(kg*K)"),
+        MaterialProperty(name="youngsmodulus", value=110e9, unit="Pa"),
+        MaterialProperty(name="poissonsratio", value=0.35),
     ],
     "Steel AISI 4340": [
         MaterialProperty(name="density", value=7850, unit="kg/m^3"),
