@@ -4792,6 +4792,190 @@ body.sidebar-resizing * {
     }
 }
 
+/* ---- 工作流图（React Flow）---- */
+.mphb-flow-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.mphb-flow-toggle {
+    display: flex;
+    gap: 4px;
+}
+.mphb-flow-toggle button {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition:
+        background 0.15s,
+        color 0.15s,
+        border-color 0.15s;
+}
+.mphb-flow-toggle button:hover {
+    border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+    color: var(--text);
+}
+.mphb-flow-toggle button.on {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--bg);
+}
+.mphb-flow {
+    margin-bottom: 16px;
+}
+.mphb-flow-canvas {
+    height: 400px;
+    border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bg) 55%, var(--bg-panel));
+    overflow: hidden;
+}
+.mphb-flow-canvas .react-flow__attribution {
+    background: transparent;
+    color: var(--muted);
+}
+.mphb-flow-canvas .react-flow__controls {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+.mphb-flow-canvas .react-flow__controls-button {
+    background: var(--bg-panel);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    color: var(--text);
+}
+.mphb-flow-canvas .react-flow__controls-button:hover {
+    background: var(--bg);
+}
+.mphb-flow-canvas .react-flow__controls-button svg {
+    fill: currentColor;
+}
+.mphb-flow-step {
+    display: flex;
+    align-items: stretch;
+    width: 320px;
+    height: 84px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    background: var(--bg-panel);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.mphb-flow-step__accent {
+    width: 4px;
+    flex-shrink: 0;
+    border-radius: 10px 0 0 10px;
+}
+.mphb-flow-step__body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    padding: 8px 12px;
+}
+.mphb-flow-step__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+.mphb-flow-step__index {
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    color: var(--muted);
+    min-width: 1.5em;
+}
+.mphb-flow-step__label {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mphb-flow-step__type {
+    font-size: 11px;
+    color: var(--muted);
+}
+.mphb-flow-handle {
+    width: 8px !important;
+    height: 8px !important;
+    background: var(--border) !important;
+    border: 1px solid var(--bg-panel) !important;
+}
+.mphb-flow-startend {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 320px;
+    height: 56px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px dashed color-mix(in srgb, var(--border) 75%, transparent);
+    background: color-mix(in srgb, var(--bg) 75%, var(--bg-panel));
+}
+.mphb-flow-startend__label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+    flex-shrink: 0;
+}
+.mphb-flow-startend__text {
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mphb-flow-detail {
+    margin: 10px 0 0;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    border-left: 3px solid color-mix(in srgb, var(--primary) 60%, var(--border));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--bg) 85%, var(--fg));
+}
+.mphb-flow-detail__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.mphb-flow-detail__msg {
+    margin: 4px 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text);
+    opacity: 0.9;
+}
+.mphb-flow-detail__type {
+    margin: 4px 0;
+    font-size: 11px;
+    color: var(--muted);
+}
+.mphb-flow-detail__params {
+    margin: 6px 0 0;
+    padding: 8px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--bg) 92%, var(--fg));
+    font-size: 11px;
+    font-family: var(--font-mono);
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text);
+    opacity: 0.9;
+}
+
 .case-analysis-card {
     display: flex;
     flex-direction: column;

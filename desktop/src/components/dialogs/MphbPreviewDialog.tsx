@@ -1,17 +1,8 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppState } from "../../context/AppStateContext";
+import { MphbWorkflowGraph, statusClass } from "../MphbWorkflowGraph";
 import type { MphbPreview } from "../../lib/types";
-
-function statusClass(status: string): string {
-  // 规范：pending/running/success/warning/skipped/failed（兼容旧 completed/error）
-  const s = (status || "").toLowerCase();
-  if (s === "success" || s === "completed" || s === "ok") return "mphb-status--ok";
-  if (s === "failed" || s === "error") return "mphb-status--err";
-  if (s === "warning" || s === "running") return "mphb-status--warn";
-  if (s === "skipped") return "mphb-status--skip";
-  return "mphb-status--pending";
-}
 
 function openPath(path: string) {
   invoke("open_path", { path }).catch(() => {
@@ -25,6 +16,7 @@ export function MphbPreviewDialog({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [doc, setDoc] = useState<MphbPreview | null>(state.mphbPreview);
+  const [flowView, setFlowView] = useState(true);
 
   useEffect(() => {
     if (!path) {
@@ -140,9 +132,37 @@ export function MphbPreviewDialog({ onClose }: { onClose: () => void }) {
               </div>
             )}
 
-            <div className="dialog-section-title">建模步骤</div>
+            <div className="dialog-section-title mphb-flow-head">
+              <span>建模步骤</span>
+              {(doc.steps?.length ?? 0) > 0 && (
+                <div className="mphb-flow-toggle">
+                  <button
+                    type="button"
+                    className={flowView ? "on" : ""}
+                    onClick={() => setFlowView(true)}
+                  >
+                    流程图
+                  </button>
+                  <button
+                    type="button"
+                    className={flowView ? "" : "on"}
+                    onClick={() => setFlowView(false)}
+                  >
+                    列表
+                  </button>
+                </div>
+              )}
+            </div>
             {(doc.steps?.length ?? 0) === 0 ? (
               <p className="dialog-hint">无步骤记录（可能仅含操作日志）</p>
+            ) : flowView ? (
+              <MphbWorkflowGraph
+                steps={doc.steps!}
+                success={!!doc.success}
+                modelPath={doc.model_path}
+                userInput={doc.user_input}
+                planDescription={doc.plan_description}
+              />
             ) : (
               <ol className="mphb-step-list">
                 {doc.steps!.map((step) => (

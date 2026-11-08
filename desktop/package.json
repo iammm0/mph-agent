@@ -17,6 +17,7 @@
     "@fontsource/source-serif-4": "^5.2.9",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.6.0",
+    "@xyflow/react": "^12.12.1",
     "better-react-mathjax": "^3.0.0",
     "iconsax": "^0.1.1",
     "react": "^18.3.1",
