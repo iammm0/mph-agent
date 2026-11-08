@@ -174,9 +174,16 @@ def test_extract_model_operation_case_builds_sectioned_analysis(controller, tmp_
 class _FakeSelection:
     def __init__(self):
         self.entities = None
+        self.all_selected = False
 
     def set(self, entities):
         self.entities = entities
+        self.all_selected = False
+
+    def all(self):
+        """对应 COMSOL Selection.all()（如 PML selection=\"all\"）。"""
+        self.all_selected = True
+        self.entities = "all"
 
 
 class _FakeFeature:

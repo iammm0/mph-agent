@@ -39,6 +39,12 @@ export function HelpDialog() {
           <span className="dialog-row-val">选择 mph 文件并生成结构化操作案例</span>
         </div>
         <div className="dialog-row">
+          <span className="dialog-row-key">.mphb 构建过程</span>
+          <span className="dialog-row-val">
+            运行结束后自动导出；侧边栏「打开构建过程」或双击 .mphb 用 mph-agent 预览时间线
+          </span>
+        </div>
+        <div className="dialog-row">
           <span className="dialog-row-key">JSON 执行</span>
           <span className="dialog-row-val">根据 JSON 创建模型</span>
         </div>

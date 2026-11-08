@@ -16,6 +16,16 @@ uv sync
 
 需先安装 [uv](https://docs.astral.sh/uv/)。
 
+可选后处理库 [MPh](https://github.com/MPh-py/MPh) **不在默认依赖里**。只跑 `uv sync` 或 `uv sync --extra dev` 时不会安装 MPh，甚至可能卸掉已装的 `mph`/`numpy`。需要参数求值/导出等后处理时请显式：
+
+```bash
+uv sync --extra mph
+# 或与开发依赖一起：
+uv sync --extra "dev,mph"
+```
+
+可用环境变量 `MPH_BACKEND=auto|on|off` 控制是否走 MPh（默认 `auto`：装了就用）。
+
 ### 2. 启动
 
 ```bash

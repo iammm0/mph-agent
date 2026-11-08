@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useAppState } from "./context/AppStateContext";
 import { Sidebar } from "./components/Sidebar";
 import { Session } from "./components/Session";
@@ -13,6 +14,7 @@ import { OutputDialog } from "./components/dialogs/OutputDialog";
 import { SettingsDialog } from "./components/dialogs/SettingsDialog";
 import { ApiBrowserDialog } from "./components/dialogs/ApiBrowserDialog";
 import { PlanQuestionsDialog } from "./components/dialogs/PlanQuestionsDialog";
+import { MphbPreviewDialog } from "./components/dialogs/MphbPreviewDialog";
 
 interface BridgeInitStatus {
   ready: boolean;
@@ -62,6 +64,28 @@ export default function App() {
     void refreshBridgeStatus(true);
   }, [refreshBridgeStatus]);
 
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const openMphb = (path: string) => {
+      const p = (path || "").trim();
+      if (!p.toLowerCase().endsWith(".mphb")) return;
+      dispatch({ type: "SET_MPHB_PREVIEW", path: p, openDialog: true });
+    };
+    void invoke<string | null>("cli_open_path")
+      .then((p) => {
+        if (p) openMphb(p);
+      })
+      .catch(() => {});
+    void listen<string>("open-mphb", (event) => {
+      openMphb(event.payload);
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, [dispatch]);
+
   const dialogContent = (() => {
     switch (state.activeDialog) {
       case "help":
@@ -78,6 +102,8 @@ export default function App() {
         return <ApiBrowserDialog onClose={closeDialog} />;
       case "planQuestions":
         return <PlanQuestionsDialog onClose={closeDialog} />;
+      case "mphbPreview":
+        return <MphbPreviewDialog onClose={closeDialog} />;
       default:
         return null;
     }

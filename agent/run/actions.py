@@ -2012,3 +2012,72 @@ def do_list_apis(
     except Exception as e:
         logger.exception("do_list_apis 失败")
         return False, str(e)
+
+
+def do_mphb_open(path: str) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """打开并解析 .mphb 构建过程文件，返回预览结构。"""
+    try:
+        from agent.utils.mphb_io import load_mphb, preview_dict
+
+        p = (path or "").strip()
+        if not p:
+            return False, "缺少 path", None
+        doc = load_mphb(p)
+        preview = preview_dict(doc)
+        preview["path"] = str(Path(p).expanduser().resolve())
+        return True, f"已打开构建过程：{doc.title}", preview
+    except Exception as e:
+        logger.exception("do_mphb_open 失败")
+        return False, str(e), None
+
+
+def do_mphb_export(
+    *,
+    conversation_id: Optional[str] = None,
+    workspace_dir: Optional[str] = None,
+    out_path: Optional[str] = None,
+) -> Tuple[bool, str, Optional[str]]:
+    """基于当前工作空间最近计划/操作导出 .mphb（无完整 plan 对象时写最小文档）。"""
+    try:
+        from agent.schemas.mphb import MphbDocument
+        from agent.utils.mphb_io import parse_operations_md, save_mphb
+
+        cm = get_context_manager(conversation_id, workspace_dir=workspace_dir)
+        ops_text = ""
+        try:
+            if cm.operations_file.exists():
+                ops_text = cm.operations_file.read_text(encoding="utf-8")
+        except Exception:
+            ops_text = ""
+        operations = parse_operations_md(ops_text)
+        plan_data = cm.load_plan() if hasattr(cm, "load_plan") else None
+        title = "构建过程"
+        user_input = ""
+        plan_description = None
+        if isinstance(plan_data, dict):
+            title = str(plan_data.get("plan_description") or plan_data.get("user_input") or title)[
+                :80
+            ]
+            user_input = str(plan_data.get("user_input") or "")
+            plan_description = plan_data.get("plan_description")
+        model_path = cm.get_latest_model_path() if hasattr(cm, "get_latest_model_path") else None
+        from datetime import datetime, timezone
+
+        doc = MphbDocument(
+            created_at=datetime.now(timezone.utc).isoformat(),
+            title=title,
+            user_input=user_input,
+            success=True,
+            model_path=model_path,
+            workspace_dir=str(cm.workspace_root) if cm.workspace_root else None,
+            conversation_id=conversation_id,
+            plan_description=plan_description,
+            operations=operations,
+            extras={"source": "mphb_export"},
+        )
+        target = Path(out_path) if out_path else (cm.plans_dir / "build.mphb")
+        saved = save_mphb(doc, target)
+        return True, f"已导出：{saved}", str(saved)
+    except Exception as e:
+        logger.exception("do_mphb_export 失败")
+        return False, str(e), None

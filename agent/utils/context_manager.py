@@ -220,6 +220,7 @@ class ContextManager:
 
         self.history_file = self.context_dir / "history.json"
         self.summary_file = self.context_dir / "summary.json"
+        # 构建过程描述（.mphb）默认落在 plans/tasks/<id>/
         self.latest_model_file = self.context_dir / "latest_model.txt"
         self.operations_file = self.context_dir / "operations.md"
         self.plan_file = self.plans_dir / "plan.json"
@@ -520,6 +521,54 @@ class ContextManager:
                 f.write(line)
         except Exception as e:
             logger.warning("Failed to append operations.md: %s", e)
+
+    def export_mphb(
+        self,
+        plan: Any,
+        *,
+        success: bool,
+        message: str = "",
+        out_path: Optional[Path | str] = None,
+    ) -> Optional[str]:
+        """将本次运行组装为 .mphb 构建过程文件并落盘。"""
+        try:
+            from agent.utils.mphb_io import (
+                build_mphb_from_plan,
+                default_mphb_path_for_model,
+                parse_operations_md,
+                save_mphb,
+            )
+
+            ops_text = ""
+            try:
+                if self.operations_file.exists():
+                    ops_text = self.operations_file.read_text(encoding="utf-8")
+            except Exception:
+                ops_text = ""
+            operations = parse_operations_md(ops_text)
+            doc = build_mphb_from_plan(
+                plan,
+                success=success,
+                message=message,
+                conversation_id=getattr(self, "conversation_id", None),
+                workspace_dir=str(self.workspace_root) if self.workspace_root else None,
+                operations=operations,
+            )
+            target: Optional[Path]
+            if out_path:
+                target = Path(out_path)
+            else:
+                target = default_mphb_path_for_model(
+                    getattr(plan, "model_path", None), plans_dir=self.plans_dir
+                )
+            if target is None:
+                target = self.plans_dir / "build.mphb"
+            saved = save_mphb(doc, target)
+            logger.info("已导出构建过程 .mphb: %s", saved)
+            return str(saved.resolve())
+        except Exception as e:
+            logger.warning("导出 .mphb 失败: %s", e)
+            return None
 
     # ---- Conversation history ----
 

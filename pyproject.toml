@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mph-agent"
-version = "0.1.0"
-description = "一个面向 COMSOL Multiphysics 6.3 的智能 Agent，将自然语言描述的 2D/3D 建模需求（几何、材料、物理场）自动转换为模型文件"
+version = "1.1.2"
+description = "面向 COMSOL Multiphysics 的多物理场仿真建模智能体（桌面端 / 源码运行；不提供 pip 发布包）"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "mph-agent contributors"}
 ]
 keywords = ["comsol", "agent", "nlp", "simulation"]
 classifiers = [
@@ -49,13 +49,15 @@ dev = [
 vec = [
     "sentence-transformers>=2.2.0",
 ]
-# 可选：MPh（https://github.com/MPh-py/MPh）用于参数/求值/导出等后处理
+# 可选：MPh（https://github.com/MPh-py/MPh）用于参数/求值/导出等后处理。
+# 注意：`uv sync` / `uv sync --extra dev` 默认不会装 MPh，且可能卸掉已装的 mph；
+# 需要后处理时请用：`uv sync --extra mph` 或 `uv sync --extra "dev,mph"`。
 mph = [
     "MPh>=1.2.0",
 ]
 # 记忆模块已内置：Python 原生异步 + 本地 SQLite/文件，无需额外依赖
 
-# 不再设定 Python 包，仅保留桌面端与源码运行；使用 uv run python cli.py 启动
+# 本地/源码可编辑安装用（不对外发 pip 包）。日常请用桌面端或 `uv run python cli.py`。
 
 [tool.setuptools]
 py-modules = ["cli"]

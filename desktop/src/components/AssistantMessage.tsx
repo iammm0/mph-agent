@@ -183,13 +183,25 @@ function openPreviewMd(modelPath: string) {
   });
 }
 
+function extractMphbPathFromEvents(events: RunEvent[] | undefined): string | null {
+  if (!events?.length) return null;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const p = events[i]?.data?.mphb_path;
+    if (typeof p === "string" && p.trim()) return p.trim();
+  }
+  return null;
+}
+
 function ModelLocationCard({
   path,
+  mphbPath,
   emphasize = false,
 }: {
   path: string;
+  mphbPath?: string | null;
   emphasize?: boolean;
 }) {
+  const { dispatch } = useAppState();
   return (
     <div className={`assistant-msg-model-card${emphasize ? " assistant-msg-model-card--ok" : ""}`}>
       <div className="assistant-msg-model-label">模型位置</div>
@@ -221,21 +233,38 @@ function ModelLocationCard({
         >
           复制路径
         </button>
-        <button
-          type="button"
-          className="assistant-msg-model-btn"
-          onClick={() => openPreviewMd(path)}
-          title="预览操作记录 (operations.md)"
-        >
-          预览记录
-        </button>
+        {mphbPath ? (
+          <button
+            type="button"
+            className="assistant-msg-model-btn"
+            onClick={() =>
+              dispatch({
+                type: "SET_MPHB_PREVIEW",
+                path: mphbPath,
+                openDialog: true,
+              })
+            }
+            title="在 mph-agent 中预览构建过程 (.mphb)"
+          >
+            预览构建过程
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="assistant-msg-model-btn"
+            onClick={() => openPreviewMd(path)}
+            title="预览操作记录 (operations.md)"
+          >
+            预览记录
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
 export function AssistantMessage({ message }: { message: ChatMessage }) {
-  const { state } = useAppState();
+  const { state, dispatch } = useAppState();
   const { handleSubmit } = useBridge();
   const hasEvents = (message.events?.length ?? 0) > 0;
   const isError = message.success === false;
@@ -270,6 +299,8 @@ export function AssistantMessage({ message }: { message: ChatMessage }) {
     structured?.modelPath ??
     extractModelPathFromEvents(message.events) ??
     extractModelPath(message.text || "");
+  const mphbPath =
+    message.mphbPath ?? extractMphbPathFromEvents(message.events);
   const phaseLabel = getPhaseLabel(message.events);
   const placeholderText = renderText || (isCurrentBusy ? phaseLabel : "") || "—";
   const showReasoningPanel =
@@ -339,7 +370,34 @@ export function AssistantMessage({ message }: { message: ChatMessage }) {
         </div>
       )}
       {showModelCard && modelPath && (
-        <ModelLocationCard path={modelPath} emphasize={!isError} />
+        <ModelLocationCard
+          path={modelPath}
+          mphbPath={mphbPath}
+          emphasize={!isError}
+        />
+      )}
+      {!showModelCard && mphbPath && !isCurrentBusy && !showDoctorUi && (
+        <div className="assistant-msg-model-card">
+          <div className="assistant-msg-model-label">构建过程</div>
+          <code className="assistant-msg-model-path" title={mphbPath}>
+            {mphbPath}
+          </code>
+          <div className="assistant-msg-model-actions">
+            <button
+              type="button"
+              className="assistant-msg-model-btn primary"
+              onClick={() =>
+                dispatch({
+                  type: "SET_MPHB_PREVIEW",
+                  path: mphbPath,
+                  openDialog: true,
+                })
+              }
+            >
+              预览构建过程
+            </button>
+          </div>
+        </div>
       )}
       {caseData && !isError && (
         <div className="assistant-msg-body success assistant-msg-body--case">

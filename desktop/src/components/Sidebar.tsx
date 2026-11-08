@@ -161,7 +161,8 @@ export function Sidebar() {
       const target = e.target as HTMLElement | null;
       if (
         !target?.closest(".sidebar-item-menu-wrap") &&
-        !target?.closest(".sidebar-workspace-menu-wrap")
+        !target?.closest(".sidebar-workspace-menu-wrap") &&
+        !target?.closest(".sidebar-workspace-actions")
       ) {
         setMenuOpenId(null);
         setWorkspaceMenuKey(null);
@@ -222,6 +223,18 @@ export function Sidebar() {
     },
     [dispatch, state.workspaceDir]
   );
+
+  const openMphbFile = useCallback(async () => {
+    const selected = await open({
+      multiple: false,
+      title: "打开构建过程 (.mphb)",
+      filters: [{ name: "mph-agent 构建过程", extensions: ["mphb"] }],
+      defaultPath: state.workspaceDir || undefined,
+    });
+    if (selected == null) return;
+    const path = String(selected);
+    dispatch({ type: "SET_MPHB_PREVIEW", path, openDialog: true });
+  }, [dispatch, state.workspaceDir]);
 
   const changeWorkspaceDir = useCallback(
     async (id: string, currentPath?: string | null) => {
@@ -318,20 +331,6 @@ export function Sidebar() {
       <div className="sidebar-actions">
         <button
           type="button"
-          className="sidebar-new"
-          onClick={() => handleNewAgentTask(state.workspaceDir)}
-          title={
-            state.workspaceDir
-              ? "在当前工作空间新建 Agent 任务"
-              : "请先新建工作空间"
-          }
-          aria-label="新建 Agent 任务"
-        >
-          <Icon name="add" size={15} />
-          {!collapsed && <span>新建 Agent 任务</span>}
-        </button>
-        <button
-          type="button"
           className="sidebar-quiet-btn"
           onClick={() => setCreateOpen(true)}
           title="新建工作空间"
@@ -340,14 +339,23 @@ export function Sidebar() {
           <Icon name="folder-2" size={15} />
           {!collapsed && <span>新建工作空间</span>}
         </button>
+        <button
+          type="button"
+          className="sidebar-quiet-btn"
+          onClick={() => void openMphbFile()}
+          title="打开 .mphb 构建过程"
+          aria-label="打开构建过程"
+        >
+          <Icon name="document-text" size={15} />
+          {!collapsed && <span>打开构建过程</span>}
+        </button>
       </div>
 
       {!collapsed && (
         <div className="sidebar-list">
           {state.conversations.length === 0 && (
             <p className="sidebar-empty-hint">
-              先新建工作空间，再在同一目录下创建多个 Agent 任务（类似 Cursor）。产物分别写入
-              context/models/plans/tasks/&lt;任务id&gt;/。
+              先新建工作空间；悬停工作空间右侧「+」可继续新建 Agent 任务。
             </p>
           )}
           {workspaceGroups.map((group) => {
@@ -376,66 +384,73 @@ export function Sidebar() {
                     <span className="sidebar-workspace-name">{group.label}</span>
                     <span className="sidebar-workspace-count">{group.tasks.length}</span>
                   </button>
-                  <div className="sidebar-workspace-menu-wrap">
+                  <div className="sidebar-workspace-actions">
                     <button
                       type="button"
-                      className="sidebar-item-menu-btn"
+                      className="sidebar-item-menu-btn sidebar-workspace-add"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setWorkspaceMenuKey((k) =>
-                          k === group.key ? null : group.key
-                        );
+                        setWorkspaceMenuKey(null);
                         setMenuOpenId(null);
+                        handleNewAgentTask(group.dir);
                       }}
-                      title="工作空间操作"
-                      aria-label="工作空间操作"
+                      title="新建 Agent 任务"
+                      aria-label="新建 Agent 任务"
                     >
                       <Icon name="add" size={14} />
                     </button>
-                    {workspaceMenuKey === group.key && (
-                      <div className="sidebar-item-menu" role="menu">
-                        <button
-                          type="button"
-                          className="sidebar-item-menu-item"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setWorkspaceMenuKey(null);
-                            handleNewAgentTask(group.dir);
-                          }}
-                        >
-                          新建 Agent 任务
-                        </button>
-                        {group.dir && (
-                          <button
-                            type="button"
-                            className="sidebar-item-menu-item"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setWorkspaceMenuKey(null);
-                              invoke("open_path", { path: group.dir }).catch(() => {});
-                            }}
-                          >
-                            打开目录
-                          </button>
-                        )}
-                        {group.tasks[0] && (
-                          <button
-                            type="button"
-                            className="sidebar-item-menu-item danger"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setWorkspaceMenuKey(null);
-                              setDeleteConfirm({
-                                id: group.tasks[0].id,
-                                mode: "workspace",
-                              });
-                            }}
-                          >
-                            删除整个工作空间
-                          </button>
-                        )}
-                      </div>
-                    )}
+                    <div className="sidebar-workspace-menu-wrap">
+                      <button
+                        type="button"
+                        className="sidebar-item-menu-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setWorkspaceMenuKey((k) =>
+                            k === group.key ? null : group.key
+                          );
+                          setMenuOpenId(null);
+                        }}
+                        title="工作空间操作"
+                        aria-label="工作空间操作"
+                      >
+                        <Icon name="more-circle" size={14} />
+                      </button>
+                      {workspaceMenuKey === group.key && (
+                        <div className="sidebar-item-menu" role="menu">
+                          {group.dir && (
+                            <button
+                              type="button"
+                              className="sidebar-item-menu-item"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setWorkspaceMenuKey(null);
+                                invoke("open_path", { path: group.dir }).catch(
+                                  () => {}
+                                );
+                              }}
+                            >
+                              打开目录
+                            </button>
+                          )}
+                          {group.tasks[0] && (
+                            <button
+                              type="button"
+                              className="sidebar-item-menu-item danger"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setWorkspaceMenuKey(null);
+                                setDeleteConfirm({
+                                  id: group.tasks[0].id,
+                                  mode: "workspace",
+                                });
+                              }}
+                            >
+                              删除整个工作空间
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 {!isWsCollapsed &&

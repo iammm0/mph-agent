@@ -495,11 +495,20 @@ class ReActAgent:
                 final_path = None
 
         end_success, end_message = self._run_end_success_and_message(plan)
+        mphb_path = None
+        if self._context_manager and hasattr(self._context_manager, "export_mphb"):
+            try:
+                mphb_path = self._context_manager.export_mphb(
+                    plan, success=end_success, message=end_message
+                )
+            except Exception:
+                logger.debug("run_end 导出 .mphb 失败", exc_info=True)
         if self._event_bus:
             self._event_bus.emit_type(
                 EventType.RUN_END,
                 {
                     "model_path": final_path,
+                    "mphb_path": mphb_path,
                     "success": end_success,
                     "message": end_message,
                 },

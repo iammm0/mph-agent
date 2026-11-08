@@ -15,6 +15,8 @@ export interface ChatMessage {
   time?: number;
   /** 本次构建对应的模型路径（成功/失败/中止时均有，用于打开与预览） */
   modelPath?: string | null;
+  /** 本次运行导出的 .mphb 构建过程文件路径 */
+  mphbPath?: string | null;
   caseData?: CaseGeneratedData | null;
   caseSavedPath?: string | null;
   /** 结构化 UI（如环境诊断卡片）；与 `text` 同源，由前端解析展示 */
@@ -49,7 +51,47 @@ export type DialogType =
   | "output"
   | "settings"
   | "api"
-  | "planQuestions";
+  | "planQuestions"
+  | "mphbPreview";
+
+/** `.mphb` 构建过程预览（与 bridge mphb_open 对齐） */
+export interface MphbStepPreview {
+  index: number;
+  action: string;
+  step_type?: string;
+  label?: string;
+  status?: string;
+  message?: string;
+  model_path?: string | null;
+  parameters?: Record<string, unknown>;
+}
+
+export interface MphbOperationPreview {
+  time?: string;
+  step_type?: string;
+  message?: string;
+  result?: string;
+  model_path?: string | null;
+}
+
+export interface MphbPreview {
+  format?: string;
+  format_version?: number;
+  kind?: string;
+  title?: string;
+  created_at?: string;
+  user_input?: string;
+  success?: boolean;
+  error?: string | null;
+  model_path?: string | null;
+  workspace_dir?: string | null;
+  plan_description?: string | null;
+  path?: string;
+  steps?: MphbStepPreview[];
+  operations?: MphbOperationPreview[];
+  step_count?: number;
+  operation_count?: number;
+}
 
 /** 会话摘要；同一工作空间根目录下可挂多个 Agent 任务（Cursor 式） */
 export interface Conversation {
@@ -81,6 +123,10 @@ export interface BridgeResponse {
   discussion_card?: Record<string, unknown> | null;
   case_generated?: Record<string, unknown> | null;
   saved_path?: string | null;
+  /** mphb_open 返回的预览结构 */
+  mphb?: MphbPreview | null;
+  /** mphb_export 返回的保存路径 */
+  path?: string | null;
   items?: OpsCatalogItem[];
   total?: number;
   limit?: number;

@@ -96,7 +96,15 @@ def _mph_model(model_path: str) -> Iterator[Any]:
         model = client.load(str(path))
         yield model
     finally:
-        # 不在这里 client.clear()，避免干掉主链路还在用的会话
+        # 只卸掉本次加载的模型，避免多次调用后会话里模型堆积。
+        # 不用 client.clear() / disconnect()：与主链路 JPype 共享同一 COMSOL 会话时会伤到 JavaAPIController。
+        try:
+            if client is not None and model is not None:
+                remover = getattr(client, "remove", None)
+                if callable(remover):
+                    remover(model)
+        except Exception as e:
+            logger.debug("MPh 释放模型失败（可忽略）: %s", e)
         model = None
         client = None
 

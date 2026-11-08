@@ -83,7 +83,8 @@ def test_do_run_creates_dialog_log_and_records_events(tmp_path, monkeypatch):
 
     assert ok is True
     assert need_clarify is False
-    assert "模型已生成" in message
+    # do_run 成功文案随是否求解而变：求解成功 / 模型已生成
+    assert ("求解成功" in message) or ("模型已生成" in message)
 
     log_files = sorted((cm.context_dir / "dialog_logs").glob("*.md"))
     assert len(log_files) == 1

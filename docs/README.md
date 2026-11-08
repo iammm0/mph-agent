@@ -48,6 +48,7 @@
 |------|------|
 | [reference/comsol-api-notes.md](reference/comsol-api-notes.md) | COMSOL API 使用笔记 |
 | [reference/comsol-api-links.md](reference/comsol-api-links.md) | COMSOL 官方文档与外部参考链接 |
+| [reference/mphb-format.md](reference/mphb-format.md) | `.mphb` 构建过程文件格式与预览说明 |
 
 ## 四、项目协作与发布
 

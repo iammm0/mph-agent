@@ -55,6 +55,8 @@ try:
         do_list_deepseek_models,
         do_config_save,
         do_conversation_title_suggest,
+        do_mphb_open,
+        do_mphb_export,
     )
     from agent.core.events import EventBus, Event, EventType
     from agent.executor.java_api_controller import JavaAPIController
@@ -675,6 +677,21 @@ def _handle(req: dict[str, Any]) -> None:
                 model=req.get("model") or None,
             )
             _reply(ok, title, title=title if ok else None)
+            return
+
+        if cmd == "mphb_open":
+            path = (req.get("path") or req.get("file") or "").strip()
+            ok, msg, preview = do_mphb_open(path)
+            _reply(ok, msg, mphb=preview)
+            return
+
+        if cmd == "mphb_export":
+            ok, msg, saved = do_mphb_export(
+                conversation_id=(req.get("conversation_id") or "").strip() or None,
+                workspace_dir=(req.get("workspace_dir") or "").strip() or None,
+                out_path=(req.get("out_path") or req.get("path") or "").strip() or None,
+            )
+            _reply(ok, msg, path=saved)
             return
 
         _reply(False, f"未知命令: {cmd}")

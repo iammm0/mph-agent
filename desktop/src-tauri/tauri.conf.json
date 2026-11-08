@@ -42,6 +42,15 @@
         "installerIcon": "icons/icon.ico",
         "startMenuFolder": "mph-agent"
       }
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": ["mphb"],
+        "name": "MPHBuildProcess",
+        "description": "mph-agent 模型构建与操作过程",
+        "role": "Editor",
+        "mimeType": "application/vnd.mph-agent.build+json"
+      }
+    ]
   }
 }

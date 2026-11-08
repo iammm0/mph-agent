@@ -60,6 +60,8 @@ uv sync
 uv run python cli.py
 ```
 
+可选后处理依赖 MPh 需单独安装：`uv sync --extra mph`（或 `uv sync --extra "dev,mph"`）。普通 `uv sync` / `--extra dev` 不会装 MPh，还可能卸掉已装的 mph。详见 [INSTALL.md](docs/getting-started/INSTALL.md)。
+
 开发模式需要 [Node.js](https://nodejs.org/) 与 [Rust](https://rustup.rs/)。安装细节见 [docs/getting-started/INSTALL.md](docs/getting-started/INSTALL.md)。
 
 ## 配置

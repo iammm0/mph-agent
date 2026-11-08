@@ -20,6 +20,7 @@ import type {
   Conversation,
   ConversationGroup,
   ClarifyingQuestion,
+  MphbPreview,
 } from "../lib/types";
 import {
   loadConversations,
@@ -74,6 +75,10 @@ interface AppState {
   /** 重新编辑某条用户消息时，下次发送会从该下标截断后续消息 */
   editResumeFromIndex: number | null;
   activeDialog: DialogType;
+  /** 正在预览的 .mphb 路径 */
+  mphbPreviewPath: string | null;
+  /** 已加载的 .mphb 预览数据（可选缓存） */
+  mphbPreview: MphbPreview | null;
   /** 计划模式下，等待用户澄清的问题列表 */
   pendingPlanQuestions: ClarifyingQuestion[] | null;
   /** 上一次用于生成 Plan 的原始输入，用于在澄清问题后复用 */
@@ -141,6 +146,12 @@ type AppAction =
   | { type: "CLEAR_EDIT_RESUME" }
   | { type: "REMOVE_MESSAGES_FROM_INDEX"; conversationId: string; fromIndex: number }
   | { type: "SET_DIALOG"; dialog: DialogType }
+  | {
+      type: "SET_MPHB_PREVIEW";
+      path: string | null;
+      preview?: MphbPreview | null;
+      openDialog?: boolean;
+    }
   | { type: "SET_PLAN_QUESTIONS"; questions: ClarifyingQuestion[] | null }
   | { type: "CLEAR_PLAN_QUESTIONS" }
   | { type: "SET_LAST_PLAN_INPUT"; input: string | null }
@@ -231,6 +242,8 @@ function getInitialState(): AppState {
       editingDraft: null,
       editResumeFromIndex: null,
       activeDialog: null,
+      mphbPreviewPath: null,
+      mphbPreview: null,
       pendingPlanQuestions: null,
       lastPlanInput: null,
       discussionReadyForPlan: false,
@@ -258,6 +271,8 @@ function getInitialState(): AppState {
     editingDraft: null,
     editResumeFromIndex: null,
     activeDialog: null,
+    mphbPreviewPath: null,
+    mphbPreview: null,
     pendingPlanQuestions: null,
     lastPlanInput: null,
     discussionReadyForPlan: false,
@@ -455,10 +470,14 @@ function appReducer(state: AppState, action: AppAction): AppState {
       if (!last || last.role !== "assistant") return state;
       // 从 run_end / step_end / exec_result 取最终模型路径，保证成功时展示位置与打开入口
       let modelPath: string | null | undefined = last.modelPath;
+      let mphbPath: string | null | undefined = last.mphbPath;
       const events = last.events ?? [];
       for (let i = events.length - 1; i >= 0; i--) {
         const e = events[i];
         const d = e?.data;
+        if (!mphbPath && typeof d?.mphb_path === "string" && d.mphb_path.trim()) {
+          mphbPath = d.mphb_path.trim();
+        }
         const path =
           (typeof d?.model_path === "string" && d.model_path) ||
           (typeof d?.saved_path === "string" && d.saved_path) ||
@@ -472,6 +491,15 @@ function appReducer(state: AppState, action: AppAction): AppState {
         if (path) {
           modelPath = path;
           break;
+        }
+      }
+      if (!mphbPath) {
+        for (let i = events.length - 1; i >= 0; i--) {
+          const d = events[i]?.data;
+          if (typeof d?.mphb_path === "string" && d.mphb_path.trim()) {
+            mphbPath = d.mphb_path.trim();
+            break;
+          }
         }
       }
       const structured = parseStructuredAssistantText(text);
@@ -489,6 +517,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
           text: displayText,
           success,
           modelPath: modelPath ?? last.modelPath,
+          mphbPath: mphbPath ?? last.mphbPath,
         },
       ];
       return {
@@ -582,7 +611,23 @@ function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
     case "SET_DIALOG":
-      return { ...state, activeDialog: action.dialog };
+      return {
+        ...state,
+        activeDialog: action.dialog,
+        ...(action.dialog === null
+          ? { mphbPreviewPath: null, mphbPreview: null }
+          : {}),
+      };
+    case "SET_MPHB_PREVIEW": {
+      const open =
+        action.openDialog !== false && Boolean(action.path);
+      return {
+        ...state,
+        mphbPreviewPath: action.path,
+        mphbPreview: action.preview ?? (action.path ? state.mphbPreview : null),
+        activeDialog: open ? "mphbPreview" : state.activeDialog,
+      };
+    }
     case "SET_PLAN_QUESTIONS":
       return { ...state, pendingPlanQuestions: action.questions };
     case "CLEAR_PLAN_QUESTIONS":
