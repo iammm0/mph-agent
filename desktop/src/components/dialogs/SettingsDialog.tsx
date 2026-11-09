@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Icon } from "../Icon";
-import { useTheme, ACCENT_PRESETS } from "../../context/ThemeContext";
+import { useTheme } from "../../context/ThemeContext";
 import { useAppState } from "../../context/AppStateContext";
 import {
   apiConfigToEnv,
@@ -68,7 +68,7 @@ export function SettingsDialog({
   onClose,
   pageMode = false,
 }: SettingsDialogProps) {
-  const { themeMode, accentColor, setThemeMode, setAccentColor } = useTheme();
+  const { themeMode, setThemeMode } = useTheme();
   const { state, dispatch } = useAppState();
 
   const activeTab = state.settingsTab;
@@ -408,34 +408,6 @@ export function SettingsDialog({
                     跟随系统
                   </button>
                 </div>
-              )}
-              {renderRow(
-                "强调色",
-                <>
-                  <div className="accent-chips">
-                    {ACCENT_PRESETS.map((preset) => (
-                      <button
-                        key={preset.value}
-                        type="button"
-                        className={`accent-chip ${
-                          accentColor === preset.value ? "active" : ""
-                        }`}
-                        style={{ backgroundColor: preset.value }}
-                        onClick={() => setAccentColor(preset.value)}
-                        title={preset.name}
-                      >
-                        {preset.name}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    type="color"
-                    className="accent-color-input"
-                    value={accentColor}
-                    onChange={(event) => setAccentColor(event.target.value)}
-                  />
-                  <span className="accent-hex">{accentColor}</span>
-                </>
               )}
             </div>
           )}

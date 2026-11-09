@@ -6813,53 +6813,6 @@ body.sidebar-resizing * {
     border-color: var(--accent);
 }
 
-/* Settings: accent color chips */
-.accent-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 12px;
-}
-.accent-chip {
-    width: 36px;
-    height: 36px;
-    padding: 0;
-    border: 2px solid transparent;
-    border-radius: var(--radius);
-    color: #fff;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition:
-        transform 0.1s,
-        box-shadow 0.15s;
-    text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
-}
-.accent-chip:hover {
-    transform: scale(1.08);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-.accent-chip.active {
-    border-color: var(--text);
-    box-shadow: 0 0 0 2px var(--bg);
-}
-.accent-color-input {
-    width: 36px;
-    height: 28px;
-    padding: 2px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--bg);
-    cursor: pointer;
-    vertical-align: middle;
-}
-.accent-hex {
-    margin-left: 10px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--text-muted);
-}
-
 /* Exec dialog steps */
 .exec-step-indicator {
     display: flex;
@@ -6975,23 +6928,7 @@ body.sidebar-resizing * {
     border-color: var(--border-strong);
     box-shadow: none;
 }
-.settings-dialog--page .accent-chip {
-    width: 32px;
-    height: 28px;
-    border-radius: 4px;
-    box-shadow: none;
-}
-.settings-dialog--page .accent-chip:hover {
-    transform: none;
-    box-shadow: none;
-}
-.settings-dialog--page .accent-chip.active {
-    box-shadow: none;
-    outline: 1px solid var(--text);
-    outline-offset: 2px;
-}
-.settings-dialog--page .dialog-input,
-.settings-dialog--page .accent-color-input {
+.settings-dialog--page .dialog-input {
     background: transparent;
     border-radius: 4px;
     box-shadow: none;
